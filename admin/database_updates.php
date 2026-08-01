@@ -4394,11 +4394,18 @@ if (LATEST_DATABASE_VERSION > CURRENT_DATABASE_VERSION) {
 
     }
 
-    // if (CURRENT_DATABASE_VERSION == '2.4.4') {
-    //     // Insert queries here required to update to DB version 2.4.5
-    //     // Then, update the database to the next sequential version
-    //     mysqli_query($mysqli, "UPDATE `settings` SET `config_current_database_version` = '2.4.5'");
-    // }
+    if (CURRENT_DATABASE_VERSION == '2.4.4') {
+        // Tracks which provider ('google_oauth' | 'microsoft_oauth' | 'microsoft_graph')
+        // the currently cached config_mail_oauth_access_token was issued for. Access
+        // tokens under the Microsoft v2.0 endpoint are resource-specific (Outlook vs
+        // Graph have different audiences), so the cached token must never be reused
+        // across providers even though they share the same OAuth app credentials.
+        mysqli_query($mysqli, "ALTER TABLE `settings`
+            ADD `config_mail_oauth_access_token_provider` VARCHAR(50) NULL DEFAULT NULL AFTER `config_mail_oauth_access_token_expires_at`
+        ");
+
+        mysqli_query($mysqli, "UPDATE `settings` SET `config_current_database_version` = '2.4.5'");
+    }
 
 } else {
     // Up-to-date

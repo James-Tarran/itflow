@@ -101,10 +101,17 @@ if (!in_array($config_smtp_provider, $ms_oauth_family, true)) {
     $provider_sql .= ", config_smtp_provider = 'microsoft_oauth'";
 }
 
+// The requested scope list puts the Outlook resource (IMAP.AccessAsUser.All)
+// first, so per Microsoft's v2.0 endpoint rules this initial exchange always
+// returns an Outlook-audience token, never a Graph one - even when Sending is
+// configured for Graph. Mark it as such so it's never handed to the Graph API;
+// the Graph sender will transparently refresh a correctly-scoped token on its
+// first use instead of reusing this one.
 mysqli_query($mysqli, "UPDATE settings SET
     config_mail_oauth_refresh_token = '$refresh_token_esc',
     config_mail_oauth_access_token = '$access_token_esc',
-    config_mail_oauth_access_token_expires_at = '$expires_at_esc'
+    config_mail_oauth_access_token_expires_at = '$expires_at_esc',
+    config_mail_oauth_access_token_provider = 'microsoft_oauth'
     $provider_sql
     WHERE company_id = 1
 ");

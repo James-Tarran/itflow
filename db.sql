@@ -2151,6 +2151,7 @@ CREATE TABLE `settings` (
   `config_mail_oauth_refresh_token` text DEFAULT NULL,
   `config_mail_oauth_access_token` text DEFAULT NULL,
   `config_mail_oauth_access_token_expires_at` datetime DEFAULT NULL,
+  `config_mail_oauth_access_token_provider` varchar(50) DEFAULT NULL,
   `config_imap_host` varchar(200) DEFAULT NULL,
   `config_imap_port` int(5) DEFAULT NULL,
   `config_imap_encryption` varchar(200) DEFAULT NULL,

@@ -74,6 +74,7 @@ $config_mail_oauth_tenant_id               = $row['config_mail_oauth_tenant_id']
 $config_mail_oauth_refresh_token           = $row['config_mail_oauth_refresh_token'] ?? '';
 $config_mail_oauth_access_token            = $row['config_mail_oauth_access_token'] ?? '';
 $config_mail_oauth_access_token_expires_at = $row['config_mail_oauth_access_token_expires_at'] ?? '';
+$config_mail_oauth_access_token_provider   = $row['config_mail_oauth_access_token_provider'] ?? '';
 
 if ($config_enable_cron == 0) {
     logApp("Cron-Mail-Queue", "error", "Cron Mail Queue unable to run - cron not enabled in admin settings.");
@@ -167,11 +168,12 @@ function httpJsonPost(string $url, string $bearer_token, array $payload): array 
     ];
 }
 
-function persistMailOauthTokens(string $access_token, string $expires_at, ?string $refresh_token = null): void {
+function persistMailOauthTokens(string $access_token, string $expires_at, string $provider, ?string $refresh_token = null): void {
     global $mysqli;
 
     $access_token_esc = mysqli_real_escape_string($mysqli, $access_token);
     $expires_at_esc = mysqli_real_escape_string($mysqli, $expires_at);
+    $provider_esc = mysqli_real_escape_string($mysqli, $provider);
 
     $refresh_sql = '';
     if (!empty($refresh_token)) {
@@ -179,7 +181,7 @@ function persistMailOauthTokens(string $access_token, string $expires_at, ?strin
         $refresh_sql = ", config_mail_oauth_refresh_token = '{$refresh_token_esc}'";
     }
 
-    mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '{$access_token_esc}', config_mail_oauth_access_token_expires_at = '{$expires_at_esc}'{$refresh_sql} WHERE company_id = 1");
+    mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '{$access_token_esc}', config_mail_oauth_access_token_expires_at = '{$expires_at_esc}', config_mail_oauth_access_token_provider = '{$provider_esc}'{$refresh_sql} WHERE company_id = 1");
 }
 
 function refreshMailOauthAccessToken(string $provider, string $oauth_client_id, string $oauth_client_secret, string $oauth_tenant_id, string $oauth_refresh_token): ?array {
@@ -233,8 +235,11 @@ function refreshMailOauthAccessToken(string $provider, string $oauth_client_id, 
     return $result;
 }
 
-function resolveMailOauthAccessToken(string $provider, string $oauth_client_id, string $oauth_client_secret, string $oauth_tenant_id, string $oauth_refresh_token, string $oauth_access_token, string $oauth_access_token_expires_at): ?string {
-    if (!empty($oauth_access_token) && !tokenIsExpired($oauth_access_token_expires_at)) {
+function resolveMailOauthAccessToken(string $provider, string $oauth_client_id, string $oauth_client_secret, string $oauth_tenant_id, string $oauth_refresh_token, string $oauth_access_token, string $oauth_access_token_expires_at, string $oauth_access_token_provider = ''): ?string {
+    // The cached access token is only safe to reuse if it was minted for this
+    // same provider - Microsoft's Outlook (SMTP/IMAP) and Graph resources have
+    // different audiences, so a token cached by one is rejected by the other.
+    if (!empty($oauth_access_token) && $oauth_access_token_provider === $provider && !tokenIsExpired($oauth_access_token_expires_at)) {
         return $oauth_access_token;
     }
 
@@ -244,7 +249,7 @@ function resolveMailOauthAccessToken(string $provider, string $oauth_client_id, 
         return null;
     }
 
-    persistMailOauthTokens($tokens['access_token'], $tokens['expires_at'], $tokens['refresh_token'] ?? null);
+    persistMailOauthTokens($tokens['access_token'], $tokens['expires_at'], $provider, $tokens['refresh_token'] ?? null);
 
     return $tokens['access_token'];
 }
@@ -327,7 +332,8 @@ function sendQueueEmail(
     string $oauth_tenant_id,
     string $oauth_refresh_token,
     string $oauth_access_token,
-    string $oauth_access_token_expires_at
+    string $oauth_access_token_expires_at,
+    string $oauth_access_token_provider = ''
 ) {
     if ($provider === 'microsoft_graph') {
         $access_token = resolveMailOauthAccessToken(
@@ -337,7 +343,8 @@ function sendQueueEmail(
             trim($oauth_tenant_id),
             trim($oauth_refresh_token),
             trim($oauth_access_token),
-            trim($oauth_access_token_expires_at)
+            trim($oauth_access_token_expires_at),
+            trim($oauth_access_token_provider)
         );
 
         if (empty($access_token)) {
@@ -390,7 +397,8 @@ function sendQueueEmail(
             trim($oauth_tenant_id),
             trim($oauth_refresh_token),
             trim($oauth_access_token),
-            trim($oauth_access_token_expires_at)
+            trim($oauth_access_token_expires_at),
+            trim($oauth_access_token_provider)
         );
 
         if (empty($access_token)) {
@@ -488,7 +496,8 @@ if (mysqli_num_rows($sql_queue) > 0) {
                 (string)$config_mail_oauth_tenant_id,
                 (string)$config_mail_oauth_refresh_token,
                 (string)$config_mail_oauth_access_token,
-                (string)$config_mail_oauth_access_token_expires_at
+                (string)$config_mail_oauth_access_token_expires_at,
+                (string)$config_mail_oauth_access_token_provider
             );
 
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = 1 WHERE email_id = $email_id");
@@ -558,7 +567,8 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
                 (string)$config_mail_oauth_tenant_id,
                 (string)$config_mail_oauth_refresh_token,
                 (string)$config_mail_oauth_access_token,
-                (string)$config_mail_oauth_access_token_expires_at
+                (string)$config_mail_oauth_access_token_expires_at,
+                (string)$config_mail_oauth_access_token_provider
             );
 
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = $email_attempts WHERE email_id = $email_id");

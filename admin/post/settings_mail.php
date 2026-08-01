@@ -17,12 +17,16 @@ if (isset($_POST['oauth_connect_microsoft_mail'])) {
     $config_mail_oauth_refresh_token = sanitizeInput($_POST['config_mail_oauth_refresh_token'] ?? '');
     $config_mail_oauth_access_token  = sanitizeInput($_POST['config_mail_oauth_access_token'] ?? '');
 
+    // Clear the cached-token provider marker - a hand-pasted/refreshed access
+    // token here has an unknown resource audience (Outlook vs Graph), so force
+    // a fresh, correctly-scoped refresh on next use rather than trusting it.
     mysqli_query($mysqli, "UPDATE settings SET
         config_mail_oauth_client_id     = '$config_mail_oauth_client_id',
         config_mail_oauth_client_secret = '$config_mail_oauth_client_secret',
         config_mail_oauth_tenant_id     = '$config_mail_oauth_tenant_id',
         config_mail_oauth_refresh_token = '$config_mail_oauth_refresh_token',
-        config_mail_oauth_access_token  = '$config_mail_oauth_access_token'
+        config_mail_oauth_access_token  = '$config_mail_oauth_access_token',
+        config_mail_oauth_access_token_provider = NULL
         WHERE company_id = 1
     ");
 
@@ -143,12 +147,16 @@ if (isset($_POST['edit_mail_oauth_settings'])) {
     $config_mail_oauth_refresh_token = sanitizeInput($_POST['config_mail_oauth_refresh_token'] ?? '');
     $config_mail_oauth_access_token  = sanitizeInput($_POST['config_mail_oauth_access_token'] ?? '');
 
+    // Clear the cached-token provider marker - a hand-pasted/refreshed access
+    // token here has an unknown resource audience (Outlook vs Graph), so force
+    // a fresh, correctly-scoped refresh on next use rather than trusting it.
     mysqli_query($mysqli, "UPDATE settings SET
         config_mail_oauth_client_id     = '$config_mail_oauth_client_id',
         config_mail_oauth_client_secret = '$config_mail_oauth_client_secret',
         config_mail_oauth_tenant_id     = '$config_mail_oauth_tenant_id',
         config_mail_oauth_refresh_token = '$config_mail_oauth_refresh_token',
-        config_mail_oauth_access_token  = '$config_mail_oauth_access_token'
+        config_mail_oauth_access_token  = '$config_mail_oauth_access_token',
+        config_mail_oauth_access_token_provider = NULL
         WHERE company_id = 1
     ");
 
@@ -249,6 +257,7 @@ if (isset($_POST['test_email_imap'])) {
     $config_mail_oauth_refresh_token           = $config_mail_oauth_refresh_token ?? '';
     $config_mail_oauth_access_token            = $config_mail_oauth_access_token ?? '';
     $config_mail_oauth_access_token_expires_at = $config_mail_oauth_access_token_expires_at ?? '';
+    $config_mail_oauth_access_token_provider   = $config_mail_oauth_access_token_provider ?? '';
 
     $is_oauth = ($provider === 'google_oauth' || $provider === 'microsoft_oauth');
 
@@ -315,7 +324,7 @@ if (isset($_POST['test_email_imap'])) {
     };
 
     if ($is_oauth) {
-        if (!empty($config_mail_oauth_access_token) && !$token_is_expired($config_mail_oauth_access_token_expires_at)) {
+        if (!empty($config_mail_oauth_access_token) && $config_mail_oauth_access_token_provider === $provider && !$token_is_expired($config_mail_oauth_access_token_expires_at)) {
             $password = $config_mail_oauth_access_token;
         } else {
             if (empty($config_mail_oauth_client_id) || empty($config_mail_oauth_client_secret) || empty($config_mail_oauth_refresh_token)) {
@@ -369,7 +378,9 @@ if (isset($_POST['test_email_imap'])) {
                 $refresh_sql = ", config_mail_oauth_refresh_token = '{$refresh_token_esc}'";
             }
 
-            mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '{$token_esc}', config_mail_oauth_access_token_expires_at = '{$expires_at_esc}'{$refresh_sql} WHERE company_id = 1");
+            $provider_esc = mysqli_real_escape_string($mysqli, $provider);
+
+            mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '{$token_esc}', config_mail_oauth_access_token_expires_at = '{$expires_at_esc}', config_mail_oauth_access_token_provider = '{$provider_esc}'{$refresh_sql} WHERE company_id = 1");
         }
     }
 
@@ -578,7 +589,9 @@ if (isset($_POST['test_oauth_token_refresh'])) {
         $refresh_sql = ", config_mail_oauth_refresh_token = '$new_refresh_token_esc'";
     }
 
-    mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '$new_access_token_esc', config_mail_oauth_access_token_expires_at = '$new_expires_at_esc'$refresh_sql WHERE company_id = 1");
+    $provider_esc = mysqli_real_escape_string($mysqli, $provider);
+
+    mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '$new_access_token_esc', config_mail_oauth_access_token_expires_at = '$new_expires_at_esc', config_mail_oauth_access_token_provider = '$provider_esc'$refresh_sql WHERE company_id = 1");
 
     $provider_label = 'Google Workspace';
     if ($provider === 'microsoft_oauth') {

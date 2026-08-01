@@ -413,10 +413,13 @@ function getGoogleAccessToken(string $username): ?string {
            $config_mail_oauth_client_secret,
            $config_mail_oauth_refresh_token,
            $config_mail_oauth_access_token,
-           $config_mail_oauth_access_token_expires_at;
+           $config_mail_oauth_access_token_expires_at,
+           $config_mail_oauth_access_token_provider;
 
-    // If we have a not-expired token, use it
-    if (!empty($config_mail_oauth_access_token) && !tokenExpired($config_mail_oauth_access_token_expires_at)) {
+    // If we have a not-expired token that was actually issued for this provider, use it.
+    // The cached token/expiry columns are shared across Google/Microsoft SMTP/IMAP/Graph,
+    // so a token minted for a different provider must never be reused here.
+    if (!empty($config_mail_oauth_access_token) && ($config_mail_oauth_access_token_provider ?? '') === 'google_oauth' && !tokenExpired($config_mail_oauth_access_token_expires_at)) {
         return $config_mail_oauth_access_token;
     }
 
@@ -447,12 +450,14 @@ function getGoogleAccessToken(string $username): ?string {
     // Update in-memory globals (and persist to DB)
     $config_mail_oauth_access_token = $json['access_token'];
     $config_mail_oauth_access_token_expires_at = $expires_at;
+    $config_mail_oauth_access_token_provider = 'google_oauth';
 
     $at_esc  = mysqli_real_escape_string($mysqli, $config_mail_oauth_access_token);
     $exp_esc = mysqli_real_escape_string($mysqli, $config_mail_oauth_access_token_expires_at);
     mysqli_query($mysqli, "UPDATE settings SET
         config_mail_oauth_access_token = '{$at_esc}',
-        config_mail_oauth_access_token_expires_at = '{$exp_esc}'
+        config_mail_oauth_access_token_expires_at = '{$exp_esc}',
+        config_mail_oauth_access_token_provider = 'google_oauth'
         WHERE company_id = 1
     ");
 
@@ -470,9 +475,13 @@ function getMicrosoftAccessToken(string $username): ?string {
            $config_mail_oauth_tenant_id,
            $config_mail_oauth_refresh_token,
            $config_mail_oauth_access_token,
-           $config_mail_oauth_access_token_expires_at;
+           $config_mail_oauth_access_token_expires_at,
+           $config_mail_oauth_access_token_provider;
 
-    if (!empty($config_mail_oauth_access_token) && !tokenExpired($config_mail_oauth_access_token_expires_at)) {
+    // The cached token/expiry columns are shared across Google/Microsoft SMTP/IMAP/Graph
+    // providers, and Microsoft's Outlook (IMAP/SMTP) and Graph resources have different
+    // audiences - so only reuse the cache if it was actually minted for IMAP/SMTP OAuth.
+    if (!empty($config_mail_oauth_access_token) && ($config_mail_oauth_access_token_provider ?? '') === 'microsoft_oauth' && !tokenExpired($config_mail_oauth_access_token_expires_at)) {
         return $config_mail_oauth_access_token;
     }
 
@@ -499,12 +508,14 @@ function getMicrosoftAccessToken(string $username): ?string {
 
     $config_mail_oauth_access_token = $json['access_token'];
     $config_mail_oauth_access_token_expires_at = $expires_at;
+    $config_mail_oauth_access_token_provider = 'microsoft_oauth';
 
     $at_esc  = mysqli_real_escape_string($mysqli, $config_mail_oauth_access_token);
     $exp_esc = mysqli_real_escape_string($mysqli, $config_mail_oauth_access_token_expires_at);
     mysqli_query($mysqli, "UPDATE settings SET
         config_mail_oauth_access_token = '{$at_esc}',
-        config_mail_oauth_access_token_expires_at = '{$exp_esc}'
+        config_mail_oauth_access_token_expires_at = '{$exp_esc}',
+        config_mail_oauth_access_token_provider = 'microsoft_oauth'
         WHERE company_id = 1
     ");
 

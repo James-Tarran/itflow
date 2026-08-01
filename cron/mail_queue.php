@@ -197,12 +197,17 @@ function refreshMailOauthAccessToken(string $provider, string $oauth_client_id, 
                 'grant_type' => 'refresh_token',
             ]);
         } elseif ($provider === 'microsoft_oauth' && !empty($oauth_tenant_id)) {
+            // Explicit scope, not just for symmetry with the Graph branch below: the
+            // shared refresh token may also carry Graph (Mail.Send) consent if
+            // Receiving/IMAP or Sending elsewhere is set up for Graph, so an unscoped
+            // refresh is ambiguous about which resource's token comes back.
             $token_url = MICROSOFT_OAUTH_BASE_URL . rawurlencode($oauth_tenant_id) . "/oauth2/v2.0/token";
             $response = httpFormPost($token_url, [
                 'client_id' => $oauth_client_id,
                 'client_secret' => $oauth_client_secret,
                 'refresh_token' => $oauth_refresh_token,
                 'grant_type' => 'refresh_token',
+                'scope' => 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
             ]);
         } elseif ($provider === 'microsoft_graph' && !empty($oauth_tenant_id)) {
             // Access tokens are resource-specific under the v2.0 endpoint, so ask

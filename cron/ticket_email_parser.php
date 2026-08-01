@@ -496,7 +496,13 @@ function getMicrosoftAccessToken(string $username): ?string {
         'client_secret' => $config_mail_oauth_client_secret,
         'refresh_token' => $config_mail_oauth_refresh_token,
         'grant_type'    => 'refresh_token',
-        // IMAP/SMTP scopes typically included at initial consent; not needed for refresh
+        // Access tokens are resource-specific under the v2.0 endpoint. The shared
+        // refresh token may also carry Graph (Mail.Send) consent if Sending is set
+        // to microsoft_graph, so an unscoped refresh is ambiguous about which
+        // resource's token comes back - explicitly ask for Outlook/IMAP+SMTP, or a
+        // Graph-audience token can silently come back instead and get rejected by
+        // the IMAP server with "AUTHENTICATE failed".
+        'scope' => 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
     ]);
 
     if (!$resp['ok']) return null;

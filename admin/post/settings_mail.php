@@ -381,6 +381,10 @@ if (isset($_POST['test_email_imap'])) {
                     'client_secret' => $config_mail_oauth_client_secret,
                     'refresh_token' => $config_mail_oauth_refresh_token,
                     'grant_type' => 'refresh_token',
+                    // Explicit scope: the shared refresh token may also carry Graph
+                    // (Mail.Send) consent if Sending is set to microsoft_graph, so an
+                    // unscoped refresh is ambiguous about which resource's token comes back.
+                    'scope' => 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access',
                 ]);
             }
 

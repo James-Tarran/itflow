@@ -75,3 +75,11 @@ if (isset($_POST['ticket_billable'])) {
 } else {
     $billable = '0';
 }
+
+if (isset($_POST['ticket_status'])) {
+    $status = intval($_POST['ticket_status']);
+} elseif ($ticket_row) {
+    $status = intval($ticket_row['ticket_status']);
+} else {
+    $status = 1;
+}

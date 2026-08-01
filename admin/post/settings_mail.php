@@ -61,12 +61,17 @@ if (isset($_POST['oauth_connect_microsoft_mail'])) {
 
     // Azure AD rejects a scope request that spans more than one resource in a single
     // call (AADSTS28000) - https://outlook.office.com and https://graph.microsoft.com
-    // are different resources, so only one can be requested per Connect click. If both
-    // are needed, request Graph first (the newer, more likely to be blocking capability)
-    // and prompt the admin to click Connect again afterward to also authorize Outlook -
-    // the resulting refresh token accumulates consent across both round trips.
-    $needs_outlook = ($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth');
-    $needs_graph = ($config_smtp_provider === 'microsoft_graph');
+    // are different resources, so only one can be requested per Connect click. Pick
+    // whichever *configured* resource hasn't actually been consented yet (tracked in
+    // config_mail_oauth_consented_resources) - not just whichever is configured, or
+    // this would keep re-requesting the same already-connected resource forever and
+    // never reach the other one.
+    $consented = array_filter(explode(',', (string) ($config_mail_oauth_consented_resources ?? '')));
+
+    $needs_outlook = ($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth')
+        && !in_array('outlook', $consented, true);
+    $needs_graph = ($config_smtp_provider === 'microsoft_graph')
+        && !in_array('graph', $consented, true);
 
     if ($needs_graph) {
         $resource = 'graph';
@@ -74,6 +79,9 @@ if (isset($_POST['oauth_connect_microsoft_mail'])) {
     } elseif ($needs_outlook) {
         $resource = 'outlook';
         $scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
+    } elseif (($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_graph')) {
+        flash_alert("All required Microsoft 365 resources are already connected. If sending/receiving still fails, check mailbox-level permissions (e.g. Send As) rather than reconnecting.");
+        redirect();
     } else {
         flash_alert("No Microsoft 365 Sending or Receiving provider is configured.", 'error');
         redirect();
@@ -167,16 +175,18 @@ if (isset($_POST['edit_mail_oauth_settings'])) {
     $config_mail_oauth_refresh_token = sanitizeInput($_POST['config_mail_oauth_refresh_token'] ?? '');
     $config_mail_oauth_access_token  = sanitizeInput($_POST['config_mail_oauth_access_token'] ?? '');
 
-    // Clear the cached-token provider marker - a hand-pasted/refreshed access
-    // token here has an unknown resource audience (Outlook vs Graph), so force
-    // a fresh, correctly-scoped refresh on next use rather than trusting it.
+    // Clear the cached-token provider marker and consented-resources tracking - a
+    // hand-pasted refresh/access token here has unknown provenance (which Microsoft
+    // resource(s) it's actually valid for), so force a fresh, correctly-scoped
+    // refresh and a fresh Connect click rather than trusting stale bookkeeping.
     mysqli_query($mysqli, "UPDATE settings SET
         config_mail_oauth_client_id     = '$config_mail_oauth_client_id',
         config_mail_oauth_client_secret = '$config_mail_oauth_client_secret',
         config_mail_oauth_tenant_id     = '$config_mail_oauth_tenant_id',
         config_mail_oauth_refresh_token = '$config_mail_oauth_refresh_token',
         config_mail_oauth_access_token  = '$config_mail_oauth_access_token',
-        config_mail_oauth_access_token_provider = NULL
+        config_mail_oauth_access_token_provider = NULL,
+        config_mail_oauth_consented_resources = NULL
         WHERE company_id = 1
     ");
 

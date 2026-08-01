@@ -37,6 +37,7 @@ $config_mail_oauth_refresh_token = $row['config_mail_oauth_refresh_token'];
 $config_mail_oauth_access_token = $row['config_mail_oauth_access_token'];
 $config_mail_oauth_access_token_expires_at = $row['config_mail_oauth_access_token_expires_at'];
 $config_mail_oauth_access_token_provider = $row['config_mail_oauth_access_token_provider'] ?? '';
+$config_mail_oauth_consented_resources = $row['config_mail_oauth_consented_resources'] ?? '';
 
 // Defaults
 $config_start_page = $row['config_start_page'] ?? 'clients.php';

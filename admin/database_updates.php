@@ -4407,6 +4407,21 @@ if (LATEST_DATABASE_VERSION > CURRENT_DATABASE_VERSION) {
         mysqli_query($mysqli, "UPDATE `settings` SET `config_current_database_version` = '2.4.5'");
     }
 
+    if (CURRENT_DATABASE_VERSION == '2.4.5') {
+        // Tracks which Microsoft OAuth resources ('outlook' and/or 'graph', comma
+        // separated) have actually been consented via the Connect flow. Needed because
+        // Azure AD only allows requesting one resource per authorize/token call
+        // (AADSTS28000), so Sending (Graph) and Receiving (Outlook IMAP) each need their
+        // own Connect click - without this, the flow has no way to know Graph is already
+        // connected and would keep re-requesting Graph consent forever instead of moving
+        // on to Outlook.
+        mysqli_query($mysqli, "ALTER TABLE `settings`
+            ADD `config_mail_oauth_consented_resources` VARCHAR(50) NULL DEFAULT NULL AFTER `config_mail_oauth_access_token_provider`
+        ");
+
+        mysqli_query($mysqli, "UPDATE `settings` SET `config_current_database_version` = '2.4.6'");
+    }
+
 } else {
     // Up-to-date
 }

@@ -135,11 +135,20 @@ if ($resource === 'graph') {
 // exchange returned.
 $access_token_provider = $resource === 'graph' ? 'microsoft_graph' : 'microsoft_oauth';
 
+// Add this resource to the consented set rather than overwriting it - a refresh
+// token is valid for everything the user has consented to across every prior
+// Connect click, so bookkeeping needs to accumulate the same way or the flow
+// would forget an earlier resource was already connected and loop on it forever.
+$consented = array_filter(explode(',', (string) ($config_mail_oauth_consented_resources ?? '')));
+$consented[] = $resource;
+$consented_resources_esc = mysqli_real_escape_string($mysqli, implode(',', array_unique($consented)));
+
 mysqli_query($mysqli, "UPDATE settings SET
     config_mail_oauth_refresh_token = '$refresh_token_esc',
     config_mail_oauth_access_token = '$access_token_esc',
     config_mail_oauth_access_token_expires_at = '$expires_at_esc',
-    config_mail_oauth_access_token_provider = '$access_token_provider'
+    config_mail_oauth_access_token_provider = '$access_token_provider',
+    config_mail_oauth_consented_resources = '$consented_resources_esc'
     $provider_sql
     WHERE company_id = 1
 ");
@@ -149,9 +158,12 @@ logAction("Settings", "Edit", "$session_name completed Microsoft OAuth connect f
 $success_msg = "Microsoft OAuth connected successfully ($resource). Token expires at $expires_at.";
 
 // Azure AD only allows one resource per Connect click (AADSTS28000), so if both
-// Outlook (IMAP/SMTP) and Graph are configured, the other one still needs its own click.
-$needs_outlook = ($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth');
-$needs_graph = ($config_smtp_provider === 'microsoft_graph');
+// Outlook (IMAP/SMTP) and Graph are configured and the other one isn't consented
+// yet, it still needs its own separate click.
+$needs_outlook = ($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth')
+    && !in_array('outlook', $consented, true);
+$needs_graph = ($config_smtp_provider === 'microsoft_graph')
+    && !in_array('graph', $consented, true);
 if ($resource === 'graph' && $needs_outlook) {
     $success_msg .= " Click Connect again to also authorize Outlook IMAP/SMTP.";
 } elseif ($resource === 'outlook' && $needs_graph) {

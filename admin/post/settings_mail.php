@@ -28,8 +28,8 @@ if (isset($_POST['oauth_connect_microsoft_mail'])) {
 
     // Check the SAVED providers (loaded from config at bootstrap), not $_POST —
     // the provider dropdowns live in different forms and are never posted here
-    if ($config_imap_provider !== 'microsoft_oauth' && $config_smtp_provider !== 'microsoft_oauth') {
-        flash_alert("Please set the SMTP or IMAP Provider to Microsoft 365 (OAuth) and save it before connecting.", 'error');
+    if ($config_imap_provider !== 'microsoft_oauth' && !in_array($config_smtp_provider, ['microsoft_oauth', 'microsoft_graph'], true)) {
+        flash_alert("Please set the SMTP or IMAP Provider to a Microsoft 365 option and save it before connecting.", 'error');
         redirect();
     }
 
@@ -55,7 +55,7 @@ if (isset($_POST['oauth_connect_microsoft_mail'])) {
     $_SESSION['mail_oauth_state'] = $state;
     $_SESSION['mail_oauth_state_expires_at'] = time() + 600;
 
-    $scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
+    $scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send https://graph.microsoft.com/Mail.Send';
 
     $authorize_url = MICROSOFT_OAUTH_BASE_URL . rawurlencode($config_mail_oauth_tenant_id) . '/oauth2/v2.0/authorize?'
         . http_build_query([
@@ -501,7 +501,7 @@ if (isset($_POST['test_oauth_token_refresh'])) {
 
     $provider = sanitizeInput($_POST['oauth_provider'] ?? '');
 
-    if ($provider !== 'google_oauth' && $provider !== 'microsoft_oauth') {
+    if (!in_array($provider, ['google_oauth', 'microsoft_oauth', 'microsoft_graph'], true)) {
         flash_alert("OAuth token test failed: unsupported provider.", 'error');
         redirect();
     }
@@ -516,22 +516,30 @@ if (isset($_POST['test_oauth_token_refresh'])) {
         redirect();
     }
 
-    if ($provider === 'microsoft_oauth' && empty($oauth_tenant_id)) {
+    if (($provider === 'microsoft_oauth' || $provider === 'microsoft_graph') && empty($oauth_tenant_id)) {
         flash_alert("OAuth token test failed: Microsoft tenant ID is required.", 'error');
         redirect();
     }
 
     $token_url = 'https://oauth2.googleapis.com/token';
-    if ($provider === 'microsoft_oauth') {
+    if ($provider === 'microsoft_oauth' || $provider === 'microsoft_graph') {
         $token_url = MICROSOFT_OAUTH_BASE_URL . rawurlencode($oauth_tenant_id) . "/oauth2/v2.0/token";
     }
 
-    $post_fields = http_build_query([
+    $refresh_fields = [
         'client_id' => $oauth_client_id,
         'client_secret' => $oauth_client_secret,
         'refresh_token' => $oauth_refresh_token,
         'grant_type' => 'refresh_token',
-    ]);
+    ];
+
+    if ($provider === 'microsoft_graph') {
+        // Access tokens are resource-specific under the v2.0 endpoint, so ask
+        // explicitly for a Graph-scoped token.
+        $refresh_fields['scope'] = 'https://graph.microsoft.com/Mail.Send offline_access';
+    }
+
+    $post_fields = http_build_query($refresh_fields);
 
     $ch = curl_init($token_url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -572,7 +580,12 @@ if (isset($_POST['test_oauth_token_refresh'])) {
 
     mysqli_query($mysqli, "UPDATE settings SET config_mail_oauth_access_token = '$new_access_token_esc', config_mail_oauth_access_token_expires_at = '$new_expires_at_esc'$refresh_sql WHERE company_id = 1");
 
-    $provider_label = $provider === 'microsoft_oauth' ? 'Microsoft 365' : 'Google Workspace';
+    $provider_label = 'Google Workspace';
+    if ($provider === 'microsoft_oauth') {
+        $provider_label = 'Microsoft 365 (SMTP)';
+    } elseif ($provider === 'microsoft_graph') {
+        $provider_label = 'Microsoft 365 (Graph API)';
+    }
     logAction("Settings", "Edit", "$session_name tested OAuth token refresh for $provider_label mail settings");
 
     flash_alert("OAuth token refresh successful for $provider_label. Access token expires at $new_expires_at.");

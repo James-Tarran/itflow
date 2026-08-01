@@ -10,7 +10,7 @@ function mail_status_dot($on) {
 
 $smtp_on = !empty($config_smtp_provider);
 $imap_on = !empty($config_imap_provider);
-$oauth_needed = in_array($config_smtp_provider, ['google_oauth', 'microsoft_oauth'], true)
+$oauth_needed = in_array($config_smtp_provider, ['google_oauth', 'microsoft_oauth', 'microsoft_graph'], true)
              || in_array($config_imap_provider, ['google_oauth', 'microsoft_oauth'], true);
 
 // ---- OAuth callback URI (for Entra App Registration) ------------------------
@@ -24,11 +24,11 @@ if (defined('BASE_URL') && !empty(BASE_URL)) {
 $smtp_standard_ready = !empty($config_smtp_host) && !empty($config_smtp_port)
     && !empty($config_mail_from_email) && !empty($config_mail_from_name);
 
-$smtp_oauth_ready = in_array($config_smtp_provider, ['google_oauth', 'microsoft_oauth'], true)
+$smtp_oauth_ready = in_array($config_smtp_provider, ['google_oauth', 'microsoft_oauth', 'microsoft_graph'], true)
     && !empty($config_mail_from_email) && !empty($config_mail_from_name)
     && !empty($config_mail_oauth_client_id) && !empty($config_mail_oauth_client_secret)
     && !empty($config_mail_oauth_refresh_token)
-    && ($config_smtp_provider !== 'microsoft_oauth' || !empty($config_mail_oauth_tenant_id));
+    && (!in_array($config_smtp_provider, ['microsoft_oauth', 'microsoft_graph'], true) || !empty($config_mail_oauth_tenant_id));
 
 $imap_standard_ready = !empty($config_imap_username) && !empty($config_imap_password)
     && !empty($config_imap_host) && !empty($config_imap_port);
@@ -42,14 +42,14 @@ $imap_oauth_ready = in_array($config_imap_provider, ['google_oauth', 'microsoft_
 $oauth_provider_for_test = '';
 if (in_array($config_imap_provider, ['google_oauth', 'microsoft_oauth'], true)) {
     $oauth_provider_for_test = $config_imap_provider;
-} elseif (in_array($config_smtp_provider, ['google_oauth', 'microsoft_oauth'], true)) {
+} elseif (in_array($config_smtp_provider, ['google_oauth', 'microsoft_oauth', 'microsoft_graph'], true)) {
     $oauth_provider_for_test = $config_smtp_provider;
 }
 
 $oauth_has_required_fields = !empty($oauth_provider_for_test)
     && !empty($config_mail_oauth_client_id) && !empty($config_mail_oauth_client_secret)
     && !empty($config_mail_oauth_refresh_token)
-    && ($oauth_provider_for_test !== 'microsoft_oauth' || !empty($config_mail_oauth_tenant_id));
+    && (!in_array($oauth_provider_for_test, ['microsoft_oauth', 'microsoft_graph'], true) || !empty($config_mail_oauth_tenant_id));
 
 $send_ready = $smtp_standard_ready || $smtp_oauth_ready;
 $imap_ready = $imap_standard_ready || $imap_oauth_ready;
@@ -104,7 +104,8 @@ $imap_ready = $imap_standard_ready || $imap_oauth_ready;
                                 <option value="" <?php if (empty($config_smtp_provider)) { echo 'selected'; } ?>>None (Disabled)</option>
                                 <option value="standard_smtp" <?php if ($config_smtp_provider === 'standard_smtp') { echo 'selected'; } ?>>Standard SMTP (Username/Password)</option>
                                 <option value="google_oauth" <?php if ($config_smtp_provider === 'google_oauth') { echo 'selected'; } ?>>Google Workspace (OAuth)</option>
-                                <option value="microsoft_oauth" <?php if ($config_smtp_provider === 'microsoft_oauth') { echo 'selected'; } ?>>Microsoft 365 (OAuth)</option>
+                                <option value="microsoft_oauth" <?php if ($config_smtp_provider === 'microsoft_oauth') { echo 'selected'; } ?>>Microsoft 365 (OAuth via SMTP)</option>
+                                <option value="microsoft_graph" <?php if ($config_smtp_provider === 'microsoft_graph') { echo 'selected'; } ?>>Microsoft 365 (Graph API)</option>
                             </select>
                         </div>
                         <small class="form-text text-muted" id="smtp_provider_hint">Choose your outbound mail provider.</small>
@@ -426,7 +427,8 @@ $imap_ready = $imap_standard_ready || $imap_oauth_ready;
     function toggle(el, v) { show(el, v); setDisabled(el, !v); }
     function val(s) { return (s && s.value) || ''; }
     function isStd(v) { return v === 'standard_imap' || v === 'standard_smtp'; }
-    function isOauth(v) { return v === 'google_oauth' || v === 'microsoft_oauth'; }
+    function isOauth(v) { return v === 'google_oauth' || v === 'microsoft_oauth' || v === 'microsoft_graph'; }
+    function isGraph(v) { return v === 'microsoft_graph'; }
 
     // ---- Numeric-only inputs (ports): strip anything that isn't a digit ----
     document.querySelectorAll('.numeric-only').forEach(function (el) {
@@ -488,10 +490,13 @@ $imap_ready = $imap_standard_ready || $imap_oauth_ready;
         show(smtpPtr, isOauth(sv));
         if (smtpUserLb) smtpUserLb.textContent = isOauth(sv) ? 'Authenticated User Email (licensed user)' : 'SMTP Username';
         if (smtpUserIn) smtpUserIn.placeholder = isOauth(sv) ? 'licensed.user@yourcompany.com' : 'usually your full email address';
-        if (smtpUserHt) smtpUserHt.innerHTML = isOauth(sv)
+        if (smtpUserHt) smtpUserHt.innerHTML = isGraph(sv)
+            ? 'The licensed mailbox that completed the OAuth flow &mdash; <strong>not</strong> the From / shared-mailbox address. Mail is sent via the Graph API <code>/me/sendMail</code> endpoint as this user.'
+            : isOauth(sv)
             ? 'The licensed user that completed the OAuth flow &mdash; <strong>not</strong> the From / shared-mailbox address. Becomes the <code>user=</code> identity in the XOAUTH2 string.'
             : 'Leave blank if no authentication is required.';
-        if (smtpHint) smtpHint.textContent = isOauth(sv) ? 'OAuth: set the authenticated user email here; app credentials live in the OAuth tab.'
+        if (smtpHint) smtpHint.textContent = isGraph(sv) ? 'Graph API: sends over HTTPS, not SMTP — works even if SMTP AUTH is disabled by your tenant. Set the authenticated user email here; app credentials live in the OAuth tab.'
+            : isOauth(sv) ? 'OAuth: set the authenticated user email here; app credentials live in the OAuth tab.'
             : isStd(sv) ? 'Standard: host, port, encryption, username & password.' : 'Disabled.';
 
         toggle(imapConn, isStd(iv));
@@ -506,7 +511,7 @@ $imap_ready = $imap_standard_ready || $imap_oauth_ready;
             : isStd(iv) ? 'Standard: host, port, encryption, username & password.' : 'Disabled.';
 
         const anyOauth = isOauth(sv) || isOauth(iv);
-        const anyMs = sv === 'microsoft_oauth' || iv === 'microsoft_oauth';
+        const anyMs = sv === 'microsoft_oauth' || sv === 'microsoft_graph' || iv === 'microsoft_oauth';
 
         show(oauthTabItem, anyOauth);
         toggle(tenantRow, anyMs);

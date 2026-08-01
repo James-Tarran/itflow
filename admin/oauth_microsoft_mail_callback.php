@@ -49,7 +49,7 @@ if (defined('BASE_URL') && !empty(BASE_URL)) {
 
 $redirect_uri = $base_url . '/admin/oauth_microsoft_mail_callback.php';
 $token_url = 'https://login.microsoftonline.com/' . rawurlencode($config_mail_oauth_tenant_id) . '/oauth2/v2.0/token';
-$scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
+$scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send https://graph.microsoft.com/Mail.Send';
 
 $ch = curl_init($token_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -89,12 +89,23 @@ $refresh_token_esc = mysqli_real_escape_string($mysqli, $refresh_token);
 $access_token_esc = mysqli_real_escape_string($mysqli, $access_token);
 $expires_at_esc = mysqli_real_escape_string($mysqli, $expires_at);
 
+// Only default a provider to 'microsoft_oauth' if it wasn't already set to a
+// Microsoft OAuth family value - otherwise this would silently switch e.g. a
+// deliberately-chosen 'microsoft_graph' Sending provider back to SMTP OAuth.
+$ms_oauth_family = ['microsoft_oauth', 'microsoft_graph'];
+$provider_sql = '';
+if (!in_array($config_imap_provider, $ms_oauth_family, true)) {
+    $provider_sql .= ", config_imap_provider = 'microsoft_oauth'";
+}
+if (!in_array($config_smtp_provider, $ms_oauth_family, true)) {
+    $provider_sql .= ", config_smtp_provider = 'microsoft_oauth'";
+}
+
 mysqli_query($mysqli, "UPDATE settings SET
-    config_imap_provider = 'microsoft_oauth',
-    config_smtp_provider = 'microsoft_oauth',
     config_mail_oauth_refresh_token = '$refresh_token_esc',
     config_mail_oauth_access_token = '$access_token_esc',
     config_mail_oauth_access_token_expires_at = '$expires_at_esc'
+    $provider_sql
     WHERE company_id = 1
 ");
 

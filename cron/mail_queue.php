@@ -31,6 +31,10 @@ if (!defined('MICROSOFT_OAUTH_BASE_URL')) {
     define('MICROSOFT_OAUTH_BASE_URL', 'https://login.microsoftonline.com/');
 }
 
+if (!defined('MICROSOFT_GRAPH_BASE_URL')) {
+    define('MICROSOFT_GRAPH_BASE_URL', 'https://graph.microsoft.com/v1.0/');
+}
+
 /** =======================================================================
  *  XOAUTH2 Token Provider for PHPMailer (simple “static” provider)
  * ======================================================================= */
@@ -138,6 +142,31 @@ function httpFormPost(string $url, array $fields): array {
     ];
 }
 
+function httpJsonPost(string $url, string $bearer_token, array $payload): array {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $bearer_token,
+        'Content-Type: application/json',
+    ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    curl_close($ch);
+
+    return [
+        'ok' => ($raw !== false && $code >= 200 && $code < 300),
+        'body' => $raw,
+        'code' => $code,
+        'err' => $err,
+    ];
+}
+
 function persistMailOauthTokens(string $access_token, string $expires_at, ?string $refresh_token = null): void {
     global $mysqli;
 
@@ -172,6 +201,18 @@ function refreshMailOauthAccessToken(string $provider, string $oauth_client_id, 
                 'client_secret' => $oauth_client_secret,
                 'refresh_token' => $oauth_refresh_token,
                 'grant_type' => 'refresh_token',
+            ]);
+        } elseif ($provider === 'microsoft_graph' && !empty($oauth_tenant_id)) {
+            // Access tokens are resource-specific under the v2.0 endpoint, so ask
+            // explicitly for a Graph-scoped token rather than relying on whatever
+            // resource was last requested for this refresh token.
+            $token_url = MICROSOFT_OAUTH_BASE_URL . rawurlencode($oauth_tenant_id) . "/oauth2/v2.0/token";
+            $response = httpFormPost($token_url, [
+                'client_id' => $oauth_client_id,
+                'client_secret' => $oauth_client_secret,
+                'refresh_token' => $oauth_refresh_token,
+                'grant_type' => 'refresh_token',
+                'scope' => 'https://graph.microsoft.com/Mail.Send offline_access',
             ]);
         }
     }
@@ -208,6 +249,65 @@ function resolveMailOauthAccessToken(string $provider, string $oauth_client_id, 
     return $tokens['access_token'];
 }
 
+function sendGraphMail(
+    string $access_token,
+    string $from_email,
+    string $from_name,
+    string $to_email,
+    string $to_name,
+    string $subject,
+    string $html_body,
+    string $ics_str
+): void {
+    $message = [
+        'subject' => $subject,
+        'body' => [
+            'contentType' => 'HTML',
+            'content' => $html_body,
+        ],
+        'toRecipients' => [
+            [
+                'emailAddress' => [
+                    'address' => $to_email,
+                    'name' => $to_name,
+                ],
+            ],
+        ],
+    ];
+
+    if (!empty($from_email)) {
+        // Requires the authenticated mailbox to have Send As / Send on Behalf
+        // rights on $from_email if it differs from the mailbox the token belongs to.
+        $message['from'] = [
+            'emailAddress' => [
+                'address' => $from_email,
+                'name' => $from_name,
+            ],
+        ];
+    }
+
+    if (!empty($ics_str)) {
+        $message['attachments'] = [
+            [
+                '@odata.type' => '#microsoft.graph.fileAttachment',
+                'name' => 'Scheduled_ticket.ics',
+                'contentType' => 'text/calendar',
+                'contentBytes' => base64_encode($ics_str),
+            ],
+        ];
+    }
+
+    $response = httpJsonPost(MICROSOFT_GRAPH_BASE_URL . 'me/sendMail', $access_token, [
+        'message' => $message,
+        'saveToSentItems' => true,
+    ]);
+
+    if (empty($response['ok'])) {
+        $reason = $response['err'] ?: ($response['body'] ?: ('HTTP ' . $response['code']));
+        throw new Exception("Microsoft Graph sendMail failed: " . substr((string) $reason, 0, 300));
+    }
+}
+
 function sendQueueEmail(
     string $provider,
     string $host,
@@ -229,6 +329,25 @@ function sendQueueEmail(
     string $oauth_access_token,
     string $oauth_access_token_expires_at
 ) {
+    if ($provider === 'microsoft_graph') {
+        $access_token = resolveMailOauthAccessToken(
+            $provider,
+            trim($oauth_client_id),
+            trim($oauth_client_secret),
+            trim($oauth_tenant_id),
+            trim($oauth_refresh_token),
+            trim($oauth_access_token),
+            trim($oauth_access_token_expires_at)
+        );
+
+        if (empty($access_token)) {
+            throw new Exception("Missing OAuth access token for Microsoft Graph sendMail.");
+        }
+
+        sendGraphMail($access_token, $from_email, $from_name, $to_email, $to_name, $subject, $html_body, $ics_str);
+        return true;
+    }
+
     // Sensible defaults for OAuth providers if fields were left blank
     if ($provider === 'google_oauth') {
         if (!$host) $host = 'smtp.gmail.com';

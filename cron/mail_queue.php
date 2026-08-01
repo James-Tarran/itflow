@@ -309,7 +309,7 @@ function sendGraphMail(
 
     if (empty($response['ok'])) {
         $reason = $response['err'] ?: ($response['body'] ?: ('HTTP ' . $response['code']));
-        throw new Exception("Microsoft Graph sendMail failed: " . substr((string) $reason, 0, 300));
+        throw new Exception("Microsoft Graph sendMail failed: " . substr((string) $reason, 0, 700));
     }
 }
 
@@ -507,7 +507,10 @@ if (mysqli_num_rows($sql_queue) > 0) {
 
             $email_recipient_logging = sanitizeInput($rowq['email_recipient']);
             $email_subject_logging   = sanitizeInput($rowq['email_subject']);
-            $err = substr("Mailer Error: " . $e->getMessage(), 0, 100) . "...";
+            // logApp() already caps app_log_details at 1000 chars (matching the DB
+            // column) - no need to pre-truncate here too, which was cutting the
+            // message off right where the useful provider error detail starts.
+            $err = "Mailer Error: " . $e->getMessage();
 
             appNotify("Cron-Mail-Queue", "Failed to send email #$email_id to $email_recipient_logging");
             logApp("Cron-Mail-Queue", "Error", "Failed to send email: $email_id to $email_recipient_logging regarding $email_subject_logging. $err");
@@ -578,7 +581,10 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
 
             $email_recipient_logging = sanitizeInput($rowf['email_recipient']);
             $email_subject_logging   = sanitizeInput($rowf['email_subject']);
-            $err = substr("Mailer Error: " . $e->getMessage(), 0, 100) . "...";
+            // logApp() already caps app_log_details at 1000 chars (matching the DB
+            // column) - no need to pre-truncate here too, which was cutting the
+            // message off right where the useful provider error detail starts.
+            $err = "Mailer Error: " . $e->getMessage();
 
             logApp("Cron-Mail-Queue", "Error", "Failed to re-send email #$email_id to $email_recipient_logging regarding $email_subject_logging. $err");
         }

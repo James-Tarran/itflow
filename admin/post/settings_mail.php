@@ -59,7 +59,27 @@ if (isset($_POST['oauth_connect_microsoft_mail'])) {
     $_SESSION['mail_oauth_state'] = $state;
     $_SESSION['mail_oauth_state_expires_at'] = time() + 600;
 
-    $scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send https://graph.microsoft.com/Mail.Send';
+    // Azure AD rejects a scope request that spans more than one resource in a single
+    // call (AADSTS28000) - https://outlook.office.com and https://graph.microsoft.com
+    // are different resources, so only one can be requested per Connect click. If both
+    // are needed, request Graph first (the newer, more likely to be blocking capability)
+    // and prompt the admin to click Connect again afterward to also authorize Outlook -
+    // the resulting refresh token accumulates consent across both round trips.
+    $needs_outlook = ($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth');
+    $needs_graph = ($config_smtp_provider === 'microsoft_graph');
+
+    if ($needs_graph) {
+        $resource = 'graph';
+        $scope = 'offline_access openid profile https://graph.microsoft.com/Mail.Send';
+    } elseif ($needs_outlook) {
+        $resource = 'outlook';
+        $scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
+    } else {
+        flash_alert("No Microsoft 365 Sending or Receiving provider is configured.", 'error');
+        redirect();
+    }
+
+    $_SESSION['mail_oauth_resource'] = $resource;
 
     $authorize_url = MICROSOFT_OAUTH_BASE_URL . rawurlencode($config_mail_oauth_tenant_id) . '/oauth2/v2.0/authorize?'
         . http_build_query([

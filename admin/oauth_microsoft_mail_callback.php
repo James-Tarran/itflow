@@ -18,8 +18,9 @@ $error_description = sanitizeInput($_GET['error_description'] ?? '');
 
 $session_state = $_SESSION['mail_oauth_state'] ?? '';
 $session_state_expires = intval($_SESSION['mail_oauth_state_expires_at'] ?? 0);
+$resource = $_SESSION['mail_oauth_resource'] ?? 'outlook';
 
-unset($_SESSION['mail_oauth_state'], $_SESSION['mail_oauth_state_expires_at']);
+unset($_SESSION['mail_oauth_state'], $_SESSION['mail_oauth_state_expires_at'], $_SESSION['mail_oauth_resource']);
 
 if (!empty($error)) {
     $msg = "Microsoft OAuth authorization failed: $error";
@@ -49,7 +50,13 @@ if (defined('BASE_URL') && !empty(BASE_URL)) {
 
 $redirect_uri = $base_url . '/admin/oauth_microsoft_mail_callback.php';
 $token_url = 'https://login.microsoftonline.com/' . rawurlencode($config_mail_oauth_tenant_id) . '/oauth2/v2.0/token';
-$scope = 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send https://graph.microsoft.com/Mail.Send';
+
+// Must mirror exactly one resource - Azure AD rejects a scope spanning both
+// https://outlook.office.com and https://graph.microsoft.com in one request
+// (AADSTS28000), which is why the Connect click already picked a single resource.
+$scope = $resource === 'graph'
+    ? 'offline_access openid profile https://graph.microsoft.com/Mail.Send'
+    : 'offline_access openid profile https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
 
 $ch = curl_init($token_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -103,33 +110,53 @@ $refresh_token_esc = mysqli_real_escape_string($mysqli, $refresh_token);
 $access_token_esc = mysqli_real_escape_string($mysqli, $access_token);
 $expires_at_esc = mysqli_real_escape_string($mysqli, $expires_at);
 
-// Only default a provider to 'microsoft_oauth' if it wasn't already set to a
-// Microsoft OAuth family value - otherwise this would silently switch e.g. a
-// deliberately-chosen 'microsoft_graph' Sending provider back to SMTP OAuth.
+// Only default a provider to the Microsoft OAuth family if it wasn't already
+// set to one - otherwise this would silently switch e.g. a deliberately-chosen
+// 'microsoft_graph' Sending provider back to SMTP OAuth (or vice versa). Only
+// the fields relevant to the resource actually just consented are touched -
+// a Graph connect grants Mail.Send only, never IMAP, so it never defaults IMAP.
 $ms_oauth_family = ['microsoft_oauth', 'microsoft_graph'];
 $provider_sql = '';
-if (!in_array($config_imap_provider, $ms_oauth_family, true)) {
-    $provider_sql .= ", config_imap_provider = 'microsoft_oauth'";
-}
-if (!in_array($config_smtp_provider, $ms_oauth_family, true)) {
-    $provider_sql .= ", config_smtp_provider = 'microsoft_oauth'";
+if ($resource === 'graph') {
+    if (!in_array($config_smtp_provider, $ms_oauth_family, true)) {
+        $provider_sql .= ", config_smtp_provider = 'microsoft_graph'";
+    }
+} else {
+    if (!in_array($config_imap_provider, $ms_oauth_family, true)) {
+        $provider_sql .= ", config_imap_provider = 'microsoft_oauth'";
+    }
+    if (!in_array($config_smtp_provider, $ms_oauth_family, true)) {
+        $provider_sql .= ", config_smtp_provider = 'microsoft_oauth'";
+    }
 }
 
-// The requested scope list puts the Outlook resource (IMAP.AccessAsUser.All)
-// first, so per Microsoft's v2.0 endpoint rules this initial exchange always
-// returns an Outlook-audience token, never a Graph one - even when Sending is
-// configured for Graph. Mark it as such so it's never handed to the Graph API;
-// the Graph sender will transparently refresh a correctly-scoped token on its
-// first use instead of reusing this one.
+// The token audience always matches the single resource just requested, so the
+// cache marker can be trusted directly - no more guessing which resource this
+// exchange returned.
+$access_token_provider = $resource === 'graph' ? 'microsoft_graph' : 'microsoft_oauth';
+
 mysqli_query($mysqli, "UPDATE settings SET
     config_mail_oauth_refresh_token = '$refresh_token_esc',
     config_mail_oauth_access_token = '$access_token_esc',
     config_mail_oauth_access_token_expires_at = '$expires_at_esc',
-    config_mail_oauth_access_token_provider = 'microsoft_oauth'
+    config_mail_oauth_access_token_provider = '$access_token_provider'
     $provider_sql
     WHERE company_id = 1
 ");
 
-logAction("Settings", "Edit", "$session_name completed Microsoft OAuth connect flow for mail settings");
-flash_alert("Microsoft OAuth connected successfully. Token expires at $expires_at.");
+logAction("Settings", "Edit", "$session_name completed Microsoft OAuth connect flow for mail settings ($resource)");
+
+$success_msg = "Microsoft OAuth connected successfully ($resource). Token expires at $expires_at.";
+
+// Azure AD only allows one resource per Connect click (AADSTS28000), so if both
+// Outlook (IMAP/SMTP) and Graph are configured, the other one still needs its own click.
+$needs_outlook = ($config_imap_provider === 'microsoft_oauth' || $config_smtp_provider === 'microsoft_oauth');
+$needs_graph = ($config_smtp_provider === 'microsoft_graph');
+if ($resource === 'graph' && $needs_outlook) {
+    $success_msg .= " Click Connect again to also authorize Outlook IMAP/SMTP.";
+} elseif ($resource === 'outlook' && $needs_graph) {
+    $success_msg .= " Click Connect again to also authorize Graph (Sending).";
+}
+
+flash_alert($success_msg);
 redirect($settings_mail_path);

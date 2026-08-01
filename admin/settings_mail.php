@@ -311,6 +311,9 @@ $imap_ready = $imap_standard_ready || $imap_oauth_ready;
                             </div>
                         </div>
                         <small class="form-text text-muted">Add this callback URI in your Entra App Registration, save credentials, then click Connect to store the refresh token automatically.</small>
+                        <?php if ($config_smtp_provider === 'microsoft_graph' && in_array($config_imap_provider, ['microsoft_oauth'], true)) { ?>
+                        <small class="form-text text-warning d-block mt-1"><i class="fas fa-fw fa-info-circle mr-1"></i>Graph (Sending) and Outlook (Receiving) are separate Microsoft permissions and can't be authorized in one click — click Connect twice; the second click picks up whichever one is still missing.</small>
+                        <?php } ?>
                     </div>
 
                     <hr>

@@ -70,8 +70,22 @@ $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
 if ($raw_body === false || $http_code < 200 || $http_code >= 300) {
-    $reason = !empty($curl_err) ? $curl_err : "HTTP $http_code";
-    flash_alert("Microsoft OAuth token exchange failed: $reason", 'error');
+    // Surface Azure AD's actual error/error_description (e.g. AADSTS...) instead of
+    // just the bare HTTP status - that's the only way to tell invalid_grant (code
+    // reused/expired), invalid_scope (permission not added to the app registration),
+    // and redirect_uri mismatch apart.
+    $reason = "HTTP $http_code";
+    $error_json = is_string($raw_body) ? json_decode($raw_body, true) : null;
+    if (is_array($error_json) && !empty($error_json['error'])) {
+        $reason = $error_json['error'];
+        if (!empty($error_json['error_description'])) {
+            $reason .= ': ' . $error_json['error_description'];
+        }
+    } elseif (!empty($curl_err)) {
+        $reason = $curl_err;
+    }
+
+    flash_alert("Microsoft OAuth token exchange failed: " . htmlspecialchars(substr($reason, 0, 500)), 'error');
     redirect($settings_mail_path);
 }
 

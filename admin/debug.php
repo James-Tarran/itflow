@@ -6,11 +6,10 @@ require_once "../config.php";
 
 $checks = [];
 
-// Execute the git command to get the latest commit hash
-$commitHash = shell_exec('git log -1 --format=%H');
+// Read straight out of .git - no shell needed, and it still answers on a hardened host
+$commitHash = gitCurrentCommit();
 
-// Get branch info
-$gitBranch = shell_exec('git rev-parse --abbrev-ref HEAD');
+$gitBranch = gitCurrentBranch();
 
 // Section: System Information
 $systemInfo = [];
@@ -79,7 +78,7 @@ $phpConfig[] = [
 ];
 
 // Check upload_max_filesize and post_max_size >= 500M
-function return_bytes($val) {
+function toBytes($val) {
     $val = trim($val);
     $unit = strtolower(substr($val, -1));
     $num = (float)$val;
@@ -99,8 +98,8 @@ $required_bytes = 500 * 1024 * 1024; // 500M in bytes
 $upload_max_filesize = ini_get('upload_max_filesize');
 $post_max_size = ini_get('post_max_size');
 
-$upload_passed = return_bytes($upload_max_filesize) >= $required_bytes;
-$post_passed = return_bytes($post_max_size) >= $required_bytes;
+$upload_passed = toBytes($upload_max_filesize) >= $required_bytes;
+$post_passed = toBytes($post_max_size) >= $required_bytes;
 
 $phpConfig[] = [
     'name' => 'upload_max_filesize >= 500M',
@@ -114,12 +113,12 @@ $phpConfig[] = [
     'value' => $post_max_size,
 ];
 
-// PHP Memory Limit >= 128M
+// PHP Memory Limit >= 512M
 $memoryLimit = ini_get('memory_limit');
-$memoryLimitBytes = return_bytes($memoryLimit);
-$memoryLimitPassed = $memoryLimitBytes >= (128 * 1024 * 1024);
+$memoryLimitBytes = toBytes($memoryLimit);
+$memoryLimitPassed = $memoryLimitBytes >= (512 * 1024 * 1024);
 $phpConfig[] = [
-    'name' => 'PHP Memory Limit >= 128M',
+    'name' => 'PHP Memory Limit >= 512M',
     'passed' => $memoryLimitPassed,
     'value' => $memoryLimit,
 ];
@@ -146,27 +145,15 @@ $phpConfig[] = [
 // Section: Shell Commands
 $shellCommands = [];
 
-if ($shell_exec_enabled) {
-    $commands = ['whois', 'dig', 'git'];
-
-    foreach ($commands as $command) {
-        $which = trim(shell_exec("which $command 2>/dev/null"));
-        $exists = !empty($which);
-        $shellCommands[] = [
-            'name' => "Command '$command' available",
-            'passed' => $exists,
-            'value' => $exists ? $which : 'Not Found',
-        ];
-    }
-} else {
-    // If shell_exec is disabled, mark commands as unavailable
-    foreach (['whois', 'dig', 'git'] as $command) {
-        $shellCommands[] = [
-            'name' => "Command '$command' available",
-            'passed' => false,
-            'value' => 'shell_exec Disabled',
-        ];
-    }
+// Located by walking PATH rather than by running `which`, so this reports the truth on a
+// host with shell_exec disabled instead of reporting the host's php.ini back at itself
+foreach (['git'] as $command) {
+    $path = commandPath($command);
+    $shellCommands[] = [
+        'name' => "Command '$command' available",
+        'passed' => $path !== '',
+        'value' => $path !== '' ? $path : 'Not Found',
+    ];
 }
 
 // Section: SSL Checks
@@ -508,7 +495,7 @@ $mysqli->close();
 
 <div class="card card-dark">
     <div class="card-header py-3">
-        <h3 class="card-title"><i class="fas fa-fw fa-bug mr-2"></i>Debug</h3>
+        <h3 class="card-title"><i class="fas fa-fw fa-bug me-2"></i>Debug</h3>
     </div>
     <div class="card-body">
 
@@ -523,19 +510,19 @@ $mysqli->close();
             <table class="table table-bordered mb-3">
                 <tr>
                     <th>ITFlow release version</th>
-                    <th><?php echo APP_VERSION; ?></th>
+                    <th><?= APP_VERSION ?></th>
                 </tr>
                 <tr>
                     <td>Current DB Version</td>
-                    <td><?php echo CURRENT_DATABASE_VERSION; ?></td>
+                    <td><?= CURRENT_DATABASE_VERSION ?></td>
                 </tr>
                 <tr>
                     <td>Current Code Commit</td>
-                    <td><?php echo $commitHash; ?></td>
+                    <td><?= $commitHash === '' ? 'Not a git checkout' : escapeHtml($commitHash) ?></td>
                 </tr>
                 <tr>
                     <td>Current Branch</td>
-                    <td><?php echo $gitBranch; ?></td>
+                    <td><?= $gitBranch === '' ? 'Not a git checkout' : escapeHtml($gitBranch) ?></td>
                 </tr>
             </table>
         </div>

@@ -3,7 +3,7 @@
 // Variable assignment from POST (or: blank/from DB is updating)
 
 if (isset($_POST['client_name'])) {
-    $name = sanitizeInput($_POST['client_name']);
+    $name = escapeSql($_POST['client_name']);
 } elseif ($client_row) {
     $name = mysqli_real_escape_string($mysqli, $client_row['client_name']);
 } else {
@@ -11,7 +11,7 @@ if (isset($_POST['client_name'])) {
 }
 
 if (isset($_POST['client_type'])) {
-    $type = sanitizeInput($_POST['client_type']);
+    $type = escapeSql($_POST['client_type']);
 } elseif ($client_row) {
     $type = mysqli_real_escape_string($mysqli, $client_row['client_type']);
 } else {
@@ -19,7 +19,7 @@ if (isset($_POST['client_type'])) {
 }
 
 if (isset($_POST['client_website'])) {
-    $website = preg_replace("(^https?://)", "", sanitizeInput($_POST['client_website']));
+    $website = preg_replace("(^https?://)", "", escapeSql($_POST['client_website']));
 } elseif ($client_row) {
     $website = mysqli_real_escape_string($mysqli, $client_row['client_website']);
 } else {
@@ -27,7 +27,7 @@ if (isset($_POST['client_website'])) {
 }
 
 if (isset($_POST['client_referral'])) {
-    $referral = sanitizeInput($_POST['client_referral']);
+    $referral = escapeSql($_POST['client_referral']);
 } elseif ($client_row) {
     $referral = mysqli_real_escape_string($mysqli, $client_row['client_referral']);
 } else {
@@ -43,7 +43,7 @@ if (isset($_POST['client_rate'])) {
 }
 
 if (isset($_POST['client_currency_code'])) {
-    $currency_code = sanitizeInput($_POST['client_currency_code']);
+    $currency_code = escapeSql($_POST['client_currency_code']);
 } elseif ($client_row) {
     $currency_code = mysqli_real_escape_string($mysqli, $client_row['client_currency_code']);
 } else {
@@ -59,7 +59,7 @@ if (isset($_POST['client_net_terms'])) {
 }
 
 if (isset($_POST['client_tax_id_number'])) {
-    $tax_id_number = sanitizeInput($_POST['client_tax_id_number']);
+    $tax_id_number = escapeSql($_POST['client_tax_id_number']);
 } elseif ($client_row) {
     $tax_id_number = mysqli_real_escape_string($mysqli, $client_row['client_tax_id_number']);
 } else {
@@ -67,7 +67,7 @@ if (isset($_POST['client_tax_id_number'])) {
 }
 
 if (isset($_POST['client_abbreviation'])) {
-    $abbreviation = sanitizeInput(substr($_POST['client_abbreviation'], 0, 6));
+    $abbreviation = escapeSql(substr($_POST['client_abbreviation'], 0, 6));
 } elseif ($client_row) {
     $abbreviation = mysqli_real_escape_string($mysqli, $client_row['client_abbreviation']);
 } else {
@@ -76,14 +76,16 @@ if (isset($_POST['client_abbreviation'])) {
 
 if (isset($_POST['client_is_lead'])) {
     $lead = intval($_POST['client_is_lead']);
+} elseif (isset($_POST['client_lead'])) {
+    $lead = intval($_POST['client_lead']);
 } elseif ($client_row) {
-    $lead = $client_row['client_is_lead'];
+    $lead = intval($client_row['client_lead']);
 } else {
     $lead = 0; // Default: Not a lead
 }
 
 if (isset($_POST['client_notes'])) {
-    $notes = sanitizeInput($_POST['client_notes']);
+    $notes = escapeSql($_POST['client_notes']);
 } elseif ($client_row) {
     $notes = mysqli_real_escape_string($mysqli, $client_row['client_notes']);
 } else {

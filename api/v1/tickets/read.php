@@ -14,17 +14,17 @@ if (isset($_GET['ticket_id'])) {
         FROM tickets
         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
         LEFT JOIN contacts ON ticket_contact_id = contact_id
-        WHERE ticket_id = '$id' AND ticket_client_id LIKE '$client_id'"
+        WHERE ticket_id = '$id' AND 1=1 " . apiClientScopeSql('ticket_client_id') . ""
     );
 
 } else {
     // All tickets (by client ID if given, or all in general if key permits)
     // Optional filters: ticket_status_name (e.g. a custom status like "Waiting
     // Customer Response"), ticket_assigned_to (e.g. 0 to find unassigned tickets)
-    $where = ["ticket_client_id LIKE '$client_id'", "ticket_archived_at IS NULL"];
+    $where = ["1=1 " . apiClientScopeSql('ticket_client_id'), "ticket_archived_at IS NULL"];
 
     if (isset($_GET['ticket_status_name'])) {
-        $status_name = mysqli_real_escape_string($mysqli, $_GET['ticket_status_name']);
+        $status_name = escapeSql($_GET['ticket_status_name']);
         $where[] = "ticket_statuses.ticket_status_name = '$status_name'";
     }
 
@@ -45,4 +45,3 @@ if (isset($_GET['ticket_id'])) {
 
 // Output
 require_once "../read_output.php";
-

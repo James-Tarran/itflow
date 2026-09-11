@@ -3,7 +3,7 @@
 // Variable assignment from POST (or: blank/from DB if updating)
 
 if (isset($_POST['vendor_name'])) {
-    $name = sanitizeInput($_POST['vendor_name']);
+    $name = escapeSql($_POST['vendor_name']);
 } elseif ($vendor_row) {
     $name = mysqli_real_escape_string($mysqli, $vendor_row['vendor_name']);
 } else {
@@ -11,7 +11,7 @@ if (isset($_POST['vendor_name'])) {
 }
 
 if (isset($_POST['vendor_description'])) {
-    $description = sanitizeInput($_POST['vendor_description']);
+    $description = escapeSql($_POST['vendor_description']);
 } elseif ($vendor_row) {
     $description = mysqli_real_escape_string($mysqli, $vendor_row['vendor_description']);
 } else {
@@ -19,7 +19,7 @@ if (isset($_POST['vendor_description'])) {
 }
 
 if (isset($_POST['vendor_contact_name'])) {
-    $contact_name = sanitizeInput($_POST['vendor_contact_name']);
+    $contact_name = escapeSql($_POST['vendor_contact_name']);
 } elseif ($vendor_row) {
     $contact_name = mysqli_real_escape_string($mysqli, $vendor_row['vendor_contact_name']);
 } else {
@@ -27,7 +27,7 @@ if (isset($_POST['vendor_contact_name'])) {
 }
 
 if (isset($_POST['vendor_phone'])) {
-    $phone = sanitizeInput($_POST['vendor_phone']);
+    $phone = escapeSql($_POST['vendor_phone']);
 } elseif ($vendor_row) {
     $phone = mysqli_real_escape_string($mysqli, $vendor_row['vendor_phone']);
 } else {
@@ -35,7 +35,7 @@ if (isset($_POST['vendor_phone'])) {
 }
 
 if (isset($_POST['vendor_extension'])) {
-    $extension = sanitizeInput($_POST['vendor_extension']);
+    $extension = escapeSql($_POST['vendor_extension']);
 } elseif ($vendor_row) {
     $extension = mysqli_real_escape_string($mysqli, $vendor_row['vendor_extension']);
 } else {
@@ -43,7 +43,7 @@ if (isset($_POST['vendor_extension'])) {
 }
 
 if (isset($_POST['vendor_email'])) {
-    $email = sanitizeInput($_POST['vendor_email']);
+    $email = escapeSql($_POST['vendor_email']);
 } elseif ($vendor_row) {
     $email = mysqli_real_escape_string($mysqli, $vendor_row['vendor_email']);
 } else {
@@ -51,7 +51,7 @@ if (isset($_POST['vendor_email'])) {
 }
 
 if (isset($_POST['vendor_website'])) {
-    $website = preg_replace("(^https?://)", "", sanitizeInput($_POST['vendor_website']));
+    $website = preg_replace("(^https?://)", "", escapeSql($_POST['vendor_website']));
 } elseif ($vendor_row) {
     $website = mysqli_real_escape_string($mysqli, $vendor_row['vendor_website']);
 } else {
@@ -59,7 +59,7 @@ if (isset($_POST['vendor_website'])) {
 }
 
 if (isset($_POST['vendor_hours'])) {
-    $hours = sanitizeInput($_POST['vendor_hours']);
+    $hours = escapeSql($_POST['vendor_hours']);
 } elseif ($vendor_row) {
     $hours = mysqli_real_escape_string($mysqli, $vendor_row['vendor_hours']);
 } else {
@@ -67,7 +67,7 @@ if (isset($_POST['vendor_hours'])) {
 }
 
 if (isset($_POST['vendor_sla'])) {
-    $sla = sanitizeInput($_POST['vendor_sla']);
+    $sla = escapeSql($_POST['vendor_sla']);
 } elseif ($vendor_row) {
     $sla = mysqli_real_escape_string($mysqli, $vendor_row['vendor_sla']);
 } else {
@@ -75,7 +75,7 @@ if (isset($_POST['vendor_sla'])) {
 }
 
 if (isset($_POST['vendor_code'])) {
-    $code = sanitizeInput($_POST['vendor_code']);
+    $code = escapeSql($_POST['vendor_code']);
 } elseif ($vendor_row) {
     $code = mysqli_real_escape_string($mysqli, $vendor_row['vendor_code']);
 } else {
@@ -83,7 +83,7 @@ if (isset($_POST['vendor_code'])) {
 }
 
 if (isset($_POST['vendor_account_number'])) {
-    $account_number = sanitizeInput($_POST['vendor_account_number']);
+    $account_number = escapeSql($_POST['vendor_account_number']);
 } elseif ($vendor_row) {
     $account_number = mysqli_real_escape_string($mysqli, $vendor_row['vendor_account_number']);
 } else {
@@ -91,7 +91,7 @@ if (isset($_POST['vendor_account_number'])) {
 }
 
 if (isset($_POST['vendor_notes'])) {
-    $notes = sanitizeInput($_POST['vendor_notes']);
+    $notes = escapeSql($_POST['vendor_notes']);
 } elseif ($vendor_row) {
     $notes = mysqli_real_escape_string($mysqli, $vendor_row['vendor_notes']);
 } else {

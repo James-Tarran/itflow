@@ -7,13 +7,25 @@ if (isset($_GET['client_id'])) {
     require_once "includes/inc_all.php";
 }
 
+enforceUserPermission('module_sales');
+
 if (isset($_GET['recurring_invoice_id'])) {
 
     $recurring_invoice_id = intval($_GET['recurring_invoice_id']);
 
     $sql = mysqli_query(
         $mysqli,
-        "SELECT * FROM recurring_invoices
+        "SELECT client_currency_code, client_id, client_name, client_net_terms, client_website,
+            contact_email, contact_extension, contact_mobile, contact_mobile_country_code,
+            contact_phone, contact_phone_country_code, location_address, location_city,
+            location_country, location_state, location_zip, recurring_invoice_amount,
+            recurring_invoice_category_id, recurring_invoice_created_at,
+            recurring_invoice_currency_code, recurring_invoice_discount_amount,
+            recurring_invoice_email_notify, recurring_invoice_frequency, recurring_invoice_last_sent,
+            recurring_invoice_next_date, recurring_invoice_note, recurring_invoice_number,
+            recurring_invoice_prefix, recurring_invoice_scope, recurring_invoice_status,
+            recurring_payment_id, recurring_payment_method, recurring_payment_recurring_invoice_id,
+            recurring_payment_saved_payment_id FROM recurring_invoices
         LEFT JOIN clients ON recurring_invoice_client_id = client_id
         LEFT JOIN contacts ON clients.client_id = contacts.contact_client_id AND contact_primary = 1
         LEFT JOIN locations ON clients.client_id = locations.location_client_id AND location_primary = 1
@@ -27,45 +39,45 @@ if (isset($_GET['recurring_invoice_id'])) {
         } else {
             $backlink_append = '';
         }
-        echo "<h1 class='text-secondary pt-5' style='text-align: center'>There is no Recurring Invoice here<br><small><a href='recurring_invoices.php$backlink_append'><i class='fas fa-arrow-left mr-2'></i>Back to Recurring Invoices</a></small></h1>";
+        echo "<h1 class='text-secondary pt-5' style='text-align: center'>There is no Recurring Invoice here<br><small><a href='recurring_invoices.php$backlink_append'><i class='fas fa-arrow-left me-2'></i>Back to Recurring Invoices</a></small></h1>";
         require_once "../includes/footer.php";
 
         exit();
     }
 
     $row = mysqli_fetch_assoc($sql);
-    $recurring_invoice_prefix = nullable_htmlentities($row['recurring_invoice_prefix']);
+    $recurring_invoice_prefix = escapeHtml($row['recurring_invoice_prefix']);
     $recurring_invoice_number = intval($row['recurring_invoice_number']);
-    $recurring_invoice_scope = nullable_htmlentities($row['recurring_invoice_scope']);
-    $recurring_invoice_frequency = nullable_htmlentities($row['recurring_invoice_frequency']);
-    $recurring_invoice_status = nullable_htmlentities($row['recurring_invoice_status']);
+    $recurring_invoice_scope = escapeHtml($row['recurring_invoice_scope']);
+    $recurring_invoice_frequency = escapeHtml($row['recurring_invoice_frequency']);
+    $recurring_invoice_status = escapeHtml($row['recurring_invoice_status']);
     $recurring_invoice_created_at = date('Y-m-d', strtotime($row['recurring_invoice_created_at']));
-    $recurring_invoice_last_sent = nullable_htmlentities($row['recurring_invoice_last_sent']);
+    $recurring_invoice_last_sent = escapeHtml($row['recurring_invoice_last_sent']);
     if ($recurring_invoice_last_sent == 0) {
         $recurring_invoice_last_sent = '-';
     }
-    $recurring_invoice_next_date = nullable_htmlentities($row['recurring_invoice_next_date']);
+    $recurring_invoice_next_date = escapeHtml($row['recurring_invoice_next_date']);
     $recurring_invoice_amount = floatval($row['recurring_invoice_amount']);
     $recurring_invoice_discount = floatval($row['recurring_invoice_discount_amount']);
-    $recurring_invoice_currency_code = nullable_htmlentities($row['recurring_invoice_currency_code']);
-    $recurring_invoice_note = nullable_htmlentities($row['recurring_invoice_note']);
+    $recurring_invoice_currency_code = escapeHtml($row['recurring_invoice_currency_code']);
+    $recurring_invoice_note = escapeHtml($row['recurring_invoice_note']);
     $recurring_invoice_email_notify = intval($row['recurring_invoice_email_notify']);
     $category_id = intval($row['recurring_invoice_category_id']);
     $client_id = intval($row['client_id']);
-    $client_name = nullable_htmlentities($row['client_name']);
-    $location_address = nullable_htmlentities($row['location_address']);
-    $location_city = nullable_htmlentities($row['location_city']);
-    $location_state = nullable_htmlentities($row['location_state']);
-    $location_zip = nullable_htmlentities($row['location_zip']);
-    $location_country = nullable_htmlentities($row['location_country']);
-    $contact_email = nullable_htmlentities($row['contact_email']);
-    $contact_phone_country_code = nullable_htmlentities($row['contact_phone_country_code']);
-    $contact_phone = nullable_htmlentities(formatPhoneNumber($row['contact_phone'], $contact_phone_country_code));
-    $contact_extension = nullable_htmlentities($row['contact_extension']);
-    $contact_mobile_country_code = nullable_htmlentities($row['contact_mobile_country_code']);
-    $contact_mobile = nullable_htmlentities(formatPhoneNumber($row['contact_mobile'], $contact_mobile_country_code));
-    $client_website = nullable_htmlentities($row['client_website']);
-    $client_currency_code = nullable_htmlentities($row['client_currency_code']);
+    $client_name = escapeHtml($row['client_name']);
+    $location_address = escapeHtml($row['location_address']);
+    $location_city = escapeHtml($row['location_city']);
+    $location_state = escapeHtml($row['location_state']);
+    $location_zip = escapeHtml($row['location_zip']);
+    $location_country = escapeHtml($row['location_country']);
+    $contact_email = escapeHtml($row['contact_email']);
+    $contact_phone_country_code = escapeHtml($row['contact_phone_country_code']);
+    $contact_phone = escapeHtml(formatPhoneNumber($row['contact_phone'], $contact_phone_country_code));
+    $contact_extension = escapeHtml($row['contact_extension']);
+    $contact_mobile_country_code = escapeHtml($row['contact_mobile_country_code']);
+    $contact_mobile = escapeHtml(formatPhoneNumber($row['contact_mobile'], $contact_mobile_country_code));
+    $client_website = escapeHtml($row['client_website']);
+    $client_currency_code = escapeHtml($row['client_currency_code']);
     $client_net_terms = intval($row['client_net_terms']);
 
     if ($recurring_invoice_status == 1) {
@@ -77,94 +89,89 @@ if (isset($_GET['recurring_invoice_id'])) {
     }
     $recurring_payment_id = intval($row['recurring_payment_id']);
     $recurring_payment_recurring_invoice_id = intval($row['recurring_payment_recurring_invoice_id']);
-    $recurring_payment_method = nullable_htmlentities($row['recurring_payment_method']);
+    $recurring_payment_method = escapeHtml($row['recurring_payment_method']);
     $recurring_payment_saved_payment_id = intval($row['recurring_payment_saved_payment_id']);
 
     // Override Tab Title // No Sanitizing needed as this var will only be used in the tab title
     $tab_title = $row['client_name'];
     $page_title = "{$row['recurring_invoice_prefix']}{$row['recurring_invoice_number']}";
 
-    $sql = mysqli_query($mysqli, "SELECT * FROM companies WHERE company_id = 1");
+    $sql = mysqli_query($mysqli, "SELECT company_address, company_city, company_country, company_email, company_id, company_logo,
+        company_name, company_phone, company_phone_country_code, company_state, company_website,
+        company_zip FROM companies WHERE company_id = 1");
     $row = mysqli_fetch_assoc($sql);
 
     $company_id = intval($row['company_id']);
-    $company_name = nullable_htmlentities($row['company_name']);
-    $company_country = nullable_htmlentities($row['company_country']);
-    $company_address = nullable_htmlentities($row['company_address']);
-    $company_city = nullable_htmlentities($row['company_city']);
-    $company_state = nullable_htmlentities($row['company_state']);
-    $company_zip = nullable_htmlentities($row['company_zip']);
-    $company_phone_country_code = nullable_htmlentities($row['company_phone_country_code']);
-    $company_phone = nullable_htmlentities(formatPhoneNumber($row['company_phone'], $company_phone_country_code));
-    $company_email = nullable_htmlentities($row['company_email']);
-    $company_website = nullable_htmlentities($row['company_website']);
-    $company_logo = nullable_htmlentities($row['company_logo']);
+    $company_name = escapeHtml($row['company_name']);
+    $company_country = escapeHtml($row['company_country']);
+    $company_address = escapeHtml($row['company_address']);
+    $company_city = escapeHtml($row['company_city']);
+    $company_state = escapeHtml($row['company_state']);
+    $company_zip = escapeHtml($row['company_zip']);
+    $company_phone_country_code = escapeHtml($row['company_phone_country_code']);
+    $company_phone = escapeHtml(formatPhoneNumber($row['company_phone'], $company_phone_country_code));
+    $company_email = escapeHtml($row['company_email']);
+    $company_website = escapeHtml($row['company_website']);
+    $company_logo = escapeHtml($row['company_logo']);
 
-    $sql_history = mysqli_query($mysqli, "SELECT * FROM history WHERE history_recurring_invoice_id = $recurring_invoice_id ORDER BY history_id DESC");
+    $sql_history = mysqli_query($mysqli, "SELECT history_created_at, history_description, history_status FROM history WHERE history_recurring_invoice_id = $recurring_invoice_id ORDER BY history_id DESC");
 
     //Product autocomplete
-    $products_sql = mysqli_query($mysqli, "SELECT product_name AS label, product_description AS description, product_price AS price, product_tax_id AS tax FROM products WHERE product_archived_at IS NULL");
+    $json_products = getProductsForAutocomplete($mysqli);
 
-    if (mysqli_num_rows($products_sql) > 0) {
-        while ($row = mysqli_fetch_assoc($products_sql)) {
-            $products[] = $row;
-        }
-        $json_products = json_encode($products);
-    }
+    enforceClientAccess();
 
     ?>
 
     <ol class="breadcrumb d-print-none">
         <?php if (isset($_GET['client_id'])) { ?>
         <li class="breadcrumb-item">
-            <a href="client_overview.php?client_id=<?php echo $client_id; ?>"><?php echo $client_name; ?></a>
+            <a href="client_overview.php?client_id=<?= $client_id ?>"><?= $client_name ?></a>
         </li>
         <li class="breadcrumb-item">
-            <a href="recurring_invoices.php?client_id=<?php echo $client_id; ?>">Recurring Invoices</a>
+            <a href="recurring_invoices.php?client_id=<?= $client_id ?>">Recurring Invoices</a>
         </li>
         <?php } else { ?>
         <li class="breadcrumb-item">
             <a href="recurring_invoices.php">Recurring Invoices</a>
         </li>
         <li class="breadcrumb-item">
-            <a href="recurring_invoices.php?client_id=<?php echo $client_id; ?>"><?php echo $client_name; ?></a>
+            <a href="recurring_invoices.php?client_id=<?= $client_id ?>"><?= $client_name ?></a>
         </li>
         <?php } ?>
-        <li class="breadcrumb-item active"><?php echo "$recurring_invoice_prefix$recurring_invoice_number"; ?></li>
+        <li class="breadcrumb-item active"><?= "$recurring_invoice_prefix$recurring_invoice_number" ?></li>
     </ol>
 
-    <div class="card">
+    <div class="card mb-3">
         <div class="card-header d-print-none">
 
             <div class="row">
 
                 <div class="col-2">
                     <?php if ($recurring_invoice_email_notify) { ?>
-                        <a href="post.php?recurring_invoice_email_notify=0&recurring_invoice_id=<?= $recurring_invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-primary"><i class="fas fa-fw fa-bell mr-2"></i>Email Notify</a>
+                        <a href="post.php?recurring_invoice_email_notify=0&recurring_invoice_id=<?= $recurring_invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-primary"><i class="fas fa-fw fa-bell me-2"></i>Email Notify</a>
                     <?php } else { ?>
-                        <a href="post.php?recurring_invoice_email_notify=1&recurring_invoice_id=<?= $recurring_invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-outline-danger"><i class="fas fa-fw fa-bell-slash mr-2"></i>Email Notify</a>
+                        <a href="post.php?recurring_invoice_email_notify=1&recurring_invoice_id=<?= $recurring_invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" class="btn btn-outline-danger"><i class="fas fa-fw fa-bell-slash me-2"></i>Email Notify</a>
                     <?php } ?>
                 </div>
                 <div class="col-3">
-                    <?php $sql_saved_payments = mysqli_query($mysqli, "SELECT * FROM client_saved_payment_methods WHERE saved_payment_client_id = $client_id");
+                    <?php $sql_saved_payments = mysqli_query($mysqli, "SELECT saved_payment_description, saved_payment_id FROM client_saved_payment_methods WHERE saved_payment_client_id = $client_id");
                     if (mysqli_num_rows($sql_saved_payments) > 0) { ?>
                         <form class="form" action="post.php" method="post">
                             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                             <input type="hidden" name="set_recurring_payment" value="1">
-                            <input type="hidden" name="recurring_invoice_id" value="<?php echo $recurring_invoice_id; ?>">
+                            <input type="hidden" name="recurring_invoice_id" value="<?= $recurring_invoice_id ?>">
                             <div class="input-group">
-                                <div class="input-group-prepend">
                                     <span class="input-group-text"><i class="fa fa-fw fa-redo-alt"></i></span>
-                                </div>
-                                <select class="form-control select2" name="saved_payment_id" onchange="this.form.submit()">
+                                <select class="form-select select2" name="saved_payment_id" onchange="this.form.submit()">
                                     <option value="0">Disabled</option>
                                     <?php
                                         while ($row = mysqli_fetch_assoc($sql_saved_payments)) {
                                             $saved_payment_id = intval($row['saved_payment_id']);
-                                            $saved_payment_description = nullable_htmlentities($row['saved_payment_description']);
+                                            $saved_payment_description = escapeHtml($row['saved_payment_description']);
 
                                         ?>
-                                        <option <?php if ($recurring_payment_saved_payment_id == $saved_payment_id) { echo "selected"; } ?> value="<?php echo $saved_payment_id; ?>"><?php echo $saved_payment_description; ?></option>
+                                        <option <?php if ($recurring_payment_saved_payment_id == $saved_payment_id) { echo "selected"; } ?> value="<?= $saved_payment_id ?>"><?= $saved_payment_description ?></option>
                                     <?php } ?>
                                 </select>
                             </div>
@@ -173,22 +180,22 @@ if (isset($_GET['recurring_invoice_id'])) {
                 </div>
 
                 <div class="col-7">
-                    <div class="dropdown dropleft text-center float-right">
-                        <button class="btn btn-secondary" type="button" data-toggle="dropdown">
+                    <div class="dropdown dropstart text-center float-end">
+                        <button class="btn btn-secondary" type="button" data-bs-toggle="dropdown">
                             <i class="fas fa-ellipsis-v"></i>
                         </button>
                         <div class="dropdown-menu">
                             <a class="dropdown-item ajax-modal" href="#"
                                 data-modal-url="modals/recurring_invoice/recurring_invoice_edit.php?id=<?= $recurring_invoice_id ?>">
-                                <i class="fa fa-fw fa-edit text-secondary mr-2"></i>Edit
+                                <i class="fa fa-fw fa-edit text-secondary me-2"></i>Edit
                             </a>
                             <div class="dropdown-divider"></div>
                             <a class="dropdown-item" href="post.php?force_recurring=<?= $recurring_invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                <i class="fa fa-fw fa-paper-plane text-secondary mr-2"></i>Force Send
+                                <i class="fa fa-fw fa-paper-plane text-secondary me-2"></i>Force Send
                             </a>
                             <div class="dropdown-divider"></div>
                             <a class="dropdown-item text-danger confirm-link" href="post.php?delete_recurring_invoice=<?= $recurring_invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                <i class="fa fa-fw fa-trash mr-2"></i>Delete
+                                <i class="fa fa-fw fa-trash me-2"></i>Delete
                             </a>
                         </div>
                     </div>
@@ -200,39 +207,38 @@ if (isset($_GET['recurring_invoice_id'])) {
 
             <div class="row mb-3">
                 <div class="col-sm-2">
-                    <img class="img-fluid" src="<?php echo "../uploads/settings/$company_logo"; ?>" alt="Company logo">
+                    <img class="img-fluid" src="<?= "../uploads/settings/$company_logo" ?>" alt="Company logo">
                 </div>
                 <div class="col-sm-6">
                     <ul class="list-unstyled">
-                        <li><h4><strong><?php echo $company_name; ?></strong></h4></li>
-                        <li><?php echo $company_address; ?></li>
-                        <li><?php echo "$company_city $company_state $company_zip, $company_country"; ?></li>
-                        <li><?php echo "$company_email | $company_phone"; ?></li>
-                        <li><?php echo $company_website; ?></li>
+                        <li><h4><strong><?= $company_name ?></strong></h4></li>
+                        <li><?= formatAddress($company_address, $company_city, $company_state, $company_zip, $company_country, '<br>') ?></li>
+                        <li><?= "$company_email | $company_phone" ?></li>
+                        <li><?= $company_website ?></li>
                     </ul>
                 </div>
 
                 <div class="col-sm-4">
-                    <h3 class="text-right"><strong>RECURRING INVOICE</strong></h3>
-                    <h5 class="badge badge-<?php echo $status_badge_color; ?> p-2 float-right">
-                        <?php echo $status; ?>
+                    <h3 class="text-end"><strong>RECURRING INVOICE</strong></h3>
+                    <h5 class="badge text-bg-<?= $status_badge_color ?> p-2 float-end">
+                        <?= $status ?>
                     </h5>
                     <table class="table table-sm table-borderless">
                         <tr>
                             <th>Frequency:</th>
-                            <th class="text-right"><?php echo ucwords($recurring_invoice_frequency); ?>ly</th>
+                            <th class="text-end"><?= ucwords($recurring_invoice_frequency) ?>ly</th>
                         </tr>
                         <tr>
                             <th>Next Date:</th>
-                            <td class="text-right"><?php echo $recurring_invoice_next_date; ?></td>
+                            <td class="text-end"><?= $recurring_invoice_next_date ?></td>
                         </tr>
                         <tr>
                             <th>Last Sent:</th>
-                            <td class="text-right"><?php echo $recurring_invoice_last_sent; ?></td>
+                            <td class="text-end"><?= $recurring_invoice_last_sent ?></td>
                         </tr>
                         <tr>
                             <th>Created:</th>
-                            <td class="text-right"><?php echo $recurring_invoice_created_at; ?></td>
+                            <td class="text-end"><?= $recurring_invoice_created_at ?></td>
                         </tr>
                     </table>
                 </div>
@@ -242,15 +248,15 @@ if (isset($_GET['recurring_invoice_id'])) {
                 <div class="col">
                     <h6><strong>Bill To:</strong></h6>
                     <ul class="list-unstyled mb-0">
-                        <li><?php echo $client_name; ?></li>
-                        <li><?php echo $location_address; ?></li>
-                        <li><?php echo "$location_city $location_state $location_zip, $location_country"; ?></li>
-                        <li><?php echo "$contact_email | $contact_phone $contact_extension"; ?></li>
+                        <li><?= $client_name ?></li>
+                        <li><?= formatAddress($location_address, $location_city, $location_state, $location_zip, $location_country, '<br>') ?></li>
+                        <li><?= "$contact_email | $contact_phone $contact_extension" ?></li>
                     </ul>
                 </div>
             </div>
 
-            <?php $sql_items = mysqli_query($mysqli, "SELECT * FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id ORDER BY item_order ASC"); ?>
+            <?php $sql_items = mysqli_query($mysqli, "SELECT item_created_at, item_description, item_id, item_name, item_price, item_quantity, item_tax,
+                item_tax_id, item_total FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id ORDER BY item_order ASC"); ?>
 
             <div class="row mb-3">
                 <div class="col-md-12">
@@ -263,9 +269,9 @@ if (isset($_GET['recurring_invoice_id'])) {
                                         <th>Item</th>
                                         <th>Description</th>
                                         <th class="text-center">Qty</th>
-                                        <th class="text-right">Price</th>
-                                        <th class="text-right">Tax</th>
-                                        <th class="text-right">Amount</th>
+                                        <th class="text-end">Price</th>
+                                        <th class="text-end">Tax</th>
+                                        <th class="text-end">Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -276,45 +282,45 @@ if (isset($_GET['recurring_invoice_id'])) {
 
                                 while ($row = mysqli_fetch_assoc($sql_items)) {
                                     $item_id = intval($row['item_id']);
-                                    $item_name = nullable_htmlentities($row['item_name']);
-                                    $item_description = nullable_htmlentities($row['item_description']);
+                                    $item_name = escapeHtml($row['item_name']);
+                                    $item_description = escapeHtml($row['item_description']);
                                     $item_quantity = number_format(floatval($row['item_quantity']),2);
                                     $item_price = floatval($row['item_price']);
                                     $item_tax = floatval($row['item_tax']);
                                     $item_total = floatval($row['item_total']);
-                                    $item_created_at = nullable_htmlentities($row['item_created_at']);
+                                    $item_created_at = escapeHtml($row['item_created_at']);
                                     $tax_id = intval($row['item_tax_id']);
                                     $total_tax = $item_tax + $total_tax;
                                     $sub_total = $item_price * $item_quantity + $sub_total;
                                     ?>
 
-                                    <tr data-item-id="<?php echo $item_id; ?>">
+                                    <tr data-item-id="<?= $item_id ?>">
                                         <td class="d-print-none">
                                             <div class="btn-group">
                                                 <button type="button" class="btn btn-sm btn-link drag-handle">
                                                     <i class="fas fa-bars text-muted"></i>
                                                 </button>
                                                 <div class="dropdown">
-                                                    <button class="btn btn-sm btn-light" type="button" data-toggle="dropdown">
+                                                    <button class="btn btn-sm btn-light" type="button" data-bs-toggle="dropdown">
                                                         <i class="fas fa-ellipsis-v"></i>
                                                     </button>
                                                     <div class="dropdown-menu">
                                                         <a class="dropdown-item ajax-modal" href="#"
                                                             data-modal-url="modals/recurring_invoice/recurring_invoice_item_edit.php?id=<?= $item_id ?>">
-                                                            <i class="fa fa-fw fa-edit mr-2"></i>Edit
+                                                            <i class="fa fa-fw fa-edit me-2"></i>Edit
                                                         </a>
                                                         <div class="dropdown-divider"></div>
-                                                        <a class="dropdown-item text-danger confirm-link" href="post.php?delete_recurring_invoice_item=<?= $item_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-fw fa-trash mr-2"></i>Delete</a>
+                                                        <a class="dropdown-item text-danger confirm-link" href="post.php?delete_recurring_invoice_item=<?= $item_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-fw fa-trash me-2"></i>Delete</a>
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td><?php echo $item_name; ?></td>
-                                        <td><?php echo nl2br($item_description); ?></td>
-                                        <td class="text-center"><?php echo $item_quantity; ?></td>
-                                        <td class="text-right"><?php echo numfmt_format_currency($currency_format, $item_price, $recurring_invoice_currency_code); ?></td>
-                                        <td class="text-right"><?php echo numfmt_format_currency($currency_format, $item_tax, $recurring_invoice_currency_code); ?></td>
-                                        <td class="text-right"><?php echo numfmt_format_currency($currency_format, $item_total, $recurring_invoice_currency_code); ?></td>
+                                        <td><?= $item_name ?></td>
+                                        <td><?= nl2br($item_description) ?></td>
+                                        <td class="text-center"><?= $item_quantity ?></td>
+                                        <td class="text-end"><?= numfmt_format_currency($currency_format, $item_price, $recurring_invoice_currency_code) ?></td>
+                                        <td class="text-end"><?= numfmt_format_currency($currency_format, $item_tax, $recurring_invoice_currency_code) ?></td>
+                                        <td class="text-end"><?= numfmt_format_currency($currency_format, $item_total, $recurring_invoice_currency_code) ?></td>
                                     </tr>
 
                                     <?php
@@ -326,7 +332,8 @@ if (isset($_GET['recurring_invoice_id'])) {
                                     <tr class="d-print-none">
                                         <form action="post.php" method="post">
                                             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                            <input type="hidden" name="recurring_invoice_id" value="<?php echo $recurring_invoice_id; ?>">
+                                            <input type="hidden" name="recurring_invoice_id" value="<?= $recurring_invoice_id ?>">
+                                            <input type="hidden" id="product_id" name="product_id" value="0">
                                             <input type="hidden" name="item_order" value="<?php
                                                 //find largest order number and add 1
                                                 $sql = mysqli_query($mysqli, "SELECT MAX(item_order) AS item_order FROM recurring_invoice_items WHERE item_recurring_invoice_id = $recurring_invoice_id");
@@ -336,7 +343,7 @@ if (isset($_GET['recurring_invoice_id'])) {
                                                 ?>">
                                             <td></td>
                                             <td>
-                                                <input type="text" class="form-control" id="name" name="name" placeholder="Item" required>
+                                                <input type="text" class="form-control" id="name" name="name" placeholder="Item" maxlength="200" required>
                                             </td>
                                             <td>
                                                 <textarea class="form-control"  rows="2" id="desc" name="description" placeholder="Enter a Description"></textarea>
@@ -345,20 +352,20 @@ if (isset($_GET['recurring_invoice_id'])) {
                                                 <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" class="form-control" style="text-align: center;" id="qty" name="qty" placeholder="Qty">
                                             </td>
                                             <td>
-                                                <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" class="form-control" style="text-align: right;" id="price" name="price" placeholder="Price (<?php echo $recurring_invoice_currency_code; ?>)">
+                                                <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" class="form-control" style="text-align: right;" id="price" name="price" placeholder="Price (<?= $recurring_invoice_currency_code ?>)">
                                             </td>
                                             <td>
-                                                <select class="form-control" name="tax_id" id="tax" required>
+                                                <select class="form-select select2" name="tax_id" id="tax" required>
                                                     <option value="0">No Tax</option>
                                                     <?php
 
                                                     $taxes_sql = mysqli_query($mysqli, "SELECT tax_id, tax_name, tax_percent FROM taxes WHERE tax_archived_at IS NULL ORDER BY tax_name ASC");
                                                     while ($row = mysqli_fetch_assoc($taxes_sql)) {
                                                         $tax_id = intval($row['tax_id']);
-                                                        $tax_name = nullable_htmlentities($row['tax_name']);
+                                                        $tax_name = escapeHtml($row['tax_name']);
                                                         $tax_percent = floatval($row['tax_percent']);
                                                         ?>
-                                                        <option value="<?php echo $tax_id; ?>"><?php echo "$tax_name $tax_percent%"; ?></option>
+                                                        <option value="<?= $tax_id ?>"><?= "$tax_name $tax_percent%" ?></option>
 
                                                         <?php
                                                     }
@@ -383,15 +390,23 @@ if (isset($_GET['recurring_invoice_id'])) {
                 <div class="col-sm-7">
                     <div class="card">
                         <div class="card-header text-bold">
-                            Notes
-                            <div class="card-tools d-print-none">
-                                <a href="#" class="btn btn-light btn-tool" data-toggle="modal" data-target="#recurringInvoiceNoteModal">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                            </div>
+                            Notes:
+                            <span class="d-print-none" data-note-status-for="recurringInvoiceNotes"></span>
                         </div>
-                        <div class="card-body">
-                            <?php echo nl2br($recurring_invoice_note); ?>
+                        <div class="card-body p-2">
+<?php if (lookupUserPermission("module_sales") >= 2) { ?>
+                            <textarea class="form-control itflow-inline-note d-print-none" rows="6"
+                                id="recurringInvoiceNotes"
+                                placeholder="Enter some notes"
+                                data-endpoint="recurring_invoice_set_notes"
+                                data-id-field="recurring_invoice_id"
+                                data-id="<?= $recurring_invoice_id ?>"
+                                data-csrf="<?= $_SESSION['csrf_token'] ?>"><?= $recurring_invoice_note ?></textarea>
+<?php } else { ?>
+                            <div class="d-print-none"><?= nl2br($recurring_invoice_note) ?></div>
+<?php } ?>
+                            <!-- Printed output must be plain text, not a form control -->
+                            <div class="d-none d-print-block"><?= nl2br($recurring_invoice_note) ?></div>
                         </div>
                     </div>
                 </div>
@@ -400,23 +415,23 @@ if (isset($_GET['recurring_invoice_id'])) {
                         <tbody>
                             <tr>
                                 <td>Subtotal</td>
-                                <td class="text-right"><?php echo numfmt_format_currency($currency_format, $sub_total, $recurring_invoice_currency_code); ?></td>
+                                <td class="text-end"><?= numfmt_format_currency($currency_format, $sub_total, $recurring_invoice_currency_code) ?></td>
                             </tr>
                             <?php if ($recurring_invoice_discount > 0) { ?>
                                 <tr>
                                     <td>Discount</td>
-                                    <td class="text-right">-<?php echo numfmt_format_currency($currency_format, $recurring_invoice_discount, $recurring_invoice_currency_code); ?></td>
+                                    <td class="text-end">-<?= numfmt_format_currency($currency_format, $recurring_invoice_discount, $recurring_invoice_currency_code) ?></td>
                                 </tr>
                             <?php } ?>
                             <?php if ($total_tax > 0) { ?>
                                 <tr>
                                     <td>Tax</td>
-                                    <td class="text-right"><?php echo numfmt_format_currency($currency_format, $total_tax, $recurring_invoice_currency_code); ?></td>
+                                    <td class="text-end"><?= numfmt_format_currency($currency_format, $total_tax, $recurring_invoice_currency_code) ?></td>
                                 </tr>
                             <?php } ?>
                             <tr class="h5 text-bold">
                                 <td>Total</td>
-                                <td class="text-right"><?php echo numfmt_format_currency($currency_format, $recurring_invoice_amount, $recurring_invoice_currency_code); ?></td>
+                                <td class="text-end"><?= numfmt_format_currency($currency_format, $recurring_invoice_amount, $recurring_invoice_currency_code) ?></td>
                             </tr>
                         </tbody>
                     </table>
@@ -429,12 +444,12 @@ if (isset($_GET['recurring_invoice_id'])) {
         <div class="col-sm d-print-none">
             <div class="card">
                 <div class="card-header text-bold">
-                    <i class="fas fa-fw fa-history mr-2"></i>History
+                    <i class="fas fa-fw fa-history me-2"></i>History
                     <div class="card-tools">
-                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
                             <i class="fas fa-minus"></i>
                         </button>
-                        <button type="button" class="btn btn-tool" data-card-widget="remove">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-remove">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -451,14 +466,14 @@ if (isset($_GET['recurring_invoice_id'])) {
                         <?php
 
                         while ($row = mysqli_fetch_assoc($sql_history)) {
-                            $history_created_at = nullable_htmlentities($row['history_created_at']);
-                            $history_status = nullable_htmlentities($row['history_status']);
-                            $history_description = nullable_htmlentities($row['history_description']);
+                            $history_created_at = escapeHtml($row['history_created_at']);
+                            $history_status = escapeHtml($row['history_status']);
+                            $history_description = escapeHtml($row['history_description']);
 
                             ?>
                             <tr>
-                                <td><?php echo $history_created_at; ?></td>
-                                <td><?php echo $history_description; ?></td>
+                                <td><?= $history_created_at ?></td>
+                                <td><?= $history_description ?></td>
                             </tr>
                             <?php
                         }
@@ -473,36 +488,27 @@ if (isset($_GET['recurring_invoice_id'])) {
 
     <?php
 
-    require_once "modals/recurring_invoice/recurring_invoice_note.php";
 
 }
 
+?>
+
+<script src="/js/inline_notes.js"></script>
+
+<?php
 require_once "../includes/footer.php";
 
 ?>
 
-<!-- JSON Autocomplete / type ahead -->
-<link rel="stylesheet" href="../plugins/jquery-ui/jquery-ui.min.css">
-<script src="../plugins/jquery-ui/jquery-ui.min.js"></script>
+<!-- Product autocomplete for the add-item row -->
+<script src="/js/product_autocomplete.js"></script>
 <script>
-    $(function() {
-        var availableProducts = <?php echo $json_products?>;
-
-        $("#name").autocomplete({
-            source: availableProducts,
-            select: function (event, ui) {
-                $("#name").val(ui.item.label); // Product name field - this seemingly has to referenced as label
-                $("#desc").val(ui.item.description); // Product description field
-                $("#qty").val(1); // Product quantity field automatically make it a 1
-                $("#price").val(ui.item.price); // Product price field
-                $("#tax").val(ui.item.tax); // Product tax field
-                return false;
-            }
-        });
-    });
+document.addEventListener('DOMContentLoaded', function () {
+    initProductAutocomplete(<?= $json_products ?? '[]' ?>);
+});
 </script>
 
-<script src="../plugins/SortableJS/Sortable.min.js"></script>
+<script src="../libs/SortableJS/Sortable.min.js"></script>
 <script>
 new Sortable(document.querySelector('table#items tbody'), {
     handle: '.drag-handle',
@@ -514,10 +520,10 @@ new Sortable(document.querySelector('table#items tbody'), {
             order: index
         }));
 
-        $.post('ajax.php', {
+        itflowPostForm('ajax.php', {
             update_recurring_invoice_items_order: true,
             csrf_token: '<?= $_SESSION['csrf_token'] ?>',
-            recurring_invoice_id: <?php echo $recurring_invoice_id; ?>,
+            recurring_invoice_id: <?= $recurring_invoice_id ?>,
             positions: positions
         });
     }

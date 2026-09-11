@@ -7,7 +7,92 @@ if (file_exists("../config.php")) {
 
 include "../functions.php"; // Global Functions
 include "../includes/database_version.php";
+define('FROM_SETUP', true);
+require "seed_data.php"; // Shared install-time seed data
 
+$mysqli_available = isset($mysqli) && $mysqli instanceof mysqli;
+$can_show_restore = false;
+$should_skip_to_user = false;
+
+/*
+ * How far through the wizard this install already is. Each step is a separate question
+ * because each one guards a different handler below - answering all of them with "are there
+ * users?" is what used to lock the wizard out three steps early.
+ *
+ *   $install_is_live   - users exist. A restore would destroy real data, so restore closes
+ *                        and points at the CLI. One user row is enough.
+ *   $company_exists    - the company step has run (companies row, and settings seeded).
+ *   $localization_done - the localization step has run (company_locale filled in).
+ */
+$install_is_live = false;
+$company_exists = false;
+$localization_done = false;
+$resume_step = 'checks';
+
+if (file_exists("../config.php") && $mysqli_available) {
+    $table_result = mysqli_query($mysqli, "SHOW TABLES LIKE 'users'");
+    if ($table_result && mysqli_num_rows($table_result) > 0) {
+        $should_skip_to_user = true;
+        $resume_step = 'user';
+
+        $user_count_result = mysqli_query($mysqli, "SELECT COUNT(*) AS user_count FROM users");
+        if ($user_count_result) {
+            $user_count_row = mysqli_fetch_assoc($user_count_result);
+            if (intval($user_count_row['user_count']) > 0) {
+                $install_is_live = true;
+            }
+        } else {
+            // Cannot prove the install is empty, so treat it as live
+            $install_is_live = true;
+        }
+    }
+
+    if ($install_is_live) {
+        $resume_step = 'company';
+
+        $company_result = mysqli_query($mysqli, "SELECT company_locale FROM companies WHERE company_id = 1");
+        if (!$company_result) {
+            // Cannot prove either step is outstanding, so treat both as done
+            $company_exists = true;
+            $localization_done = true;
+            $resume_step = 'telemetry';
+        } elseif ($company_row = mysqli_fetch_assoc($company_result)) {
+            $company_exists = true;
+            $resume_step = 'localization';
+
+            if (trim($company_row['company_locale'] ?? '') !== '') {
+                $localization_done = true;
+                $resume_step = 'telemetry';
+            }
+        }
+    }
+
+    // Restore needs a database connection and an empty install. A populated one restores
+    // from the command line instead - scripts/restore_cli.php.
+    if (!$install_is_live) {
+        $all_tables = mysqli_query($mysqli, "SHOW TABLES");
+        if ($all_tables && mysqli_num_rows($all_tables) > 0) {
+            $can_show_restore = true;
+        }
+    }
+}
+
+/*
+ * config.php is written when the database step completes, but $config_enable_setup is only
+ * appended to it by the LAST step, so the flag is absent for the whole middle of an install
+ * and the wizard has to stay open across that gap or it cannot be finished.
+ *
+ * Deriving the flag from the database instead - closing setup as soon as the install looked
+ * "live" - is what stranded people: the first user made it live, three steps before there
+ * were companies or settings rows, and /setup and /login.php then redirected at each other
+ * until the browser gave up. Deriving it from any later step has the same shape, because the
+ * step that writes the flag is behind the gate that reads it.
+ *
+ * So the page stays open until the flag says otherwise, and each handler below refuses to run
+ * a second time on its own. That keeps the reason the derived flag was added in the first
+ * place - the restore handler drops every table, imports whatever archive it is handed and
+ * rewrites the uploads directory - without the page-level gate that came with it.
+ */
 if (!isset($config_enable_setup)) {
     $config_enable_setup = 1;
 }
@@ -15,24 +100,6 @@ if (!isset($config_enable_setup)) {
 if ($config_enable_setup == 0) {
     header("Location: /login.php");
     exit;
-}
-
-$mysqli_available = isset($mysqli) && $mysqli instanceof mysqli;
-$can_show_restore = false;
-$should_skip_to_user = false;
-
-if (file_exists("../config.php") && $mysqli_available) {
-    $table_result = mysqli_query($mysqli, "SHOW TABLES LIKE 'users'");
-    if ($table_result && mysqli_num_rows($table_result) > 0) {
-        $can_show_restore = true;
-        $should_skip_to_user = true;
-    } else {
-        // If DB exists but doesn't have user table yet, maybe still allow restore
-        $all_tables = mysqli_query($mysqli, "SHOW TABLES");
-        if ($all_tables && mysqli_num_rows($all_tables) > 0) {
-            $can_show_restore = true;
-        }
-    }
 }
 
 include_once "../includes/settings_localization_array.php";
@@ -126,253 +193,111 @@ if (isset($_POST['add_database'])) {
 
 if (isset($_POST['restore'])) {
 
-    // ---------- Long-running guards ----------
-    @set_time_limit(0);
-    if (function_exists('ini_set')) { @ini_set('memory_limit', '1024M'); }
-
-    // ---------- Minimal helpers (scoped) ----------
-    if (!function_exists('deleteDir')) {
-        function deleteDir($dir) {
-            if (!is_dir($dir)) return;
-            $it = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::CHILD_FIRST
-            );
-            foreach ($it as $item) {
-                $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
-            }
-            @rmdir($dir);
-        }
+    // Belt and braces: the page-level gate above already sends a live install to the login
+    // page, but this handler is the destructive one, so it re-checks rather than trusting
+    // that it was only reached through the form.
+    if ($install_is_live || !$can_show_restore) {
+        $_SESSION['alert_message'] = "This install already has users. Restore over it from the command line instead: php scripts/restore_cli.php --file=/path/to/backup.zip";
+        header("Location: ?restore");
+        exit;
     }
 
-    if (!function_exists('importSqlFile')) {
-        /**
-         * Import a SQL file via mysqli, supports DELIMITER and multi statements.
-         */
-        function importSqlFile(mysqli $mysqli, string $path): void {
-            if (!is_file($path) || !is_readable($path)) {
-                throw new RuntimeException("SQL file not found or unreadable: $path");
-            }
-            $fh = fopen($path, 'r');
-            if (!$fh) throw new RuntimeException("Failed to open SQL file");
+    // An upload larger than post_max_size arrives with $_FILES and $_POST both empty, so
+    // PHP cannot tell us which field failed - it is worth naming, because a real full
+    // backup is usually bigger than the limit and the old message just said the upload
+    // failed.
+    $max_upload_bytes = backupMaxUploadBytes();
+    $content_length = intval($_SERVER['CONTENT_LENGTH'] ?? 0);
 
-            $delimiter = ';';
-            $statement = '';
-
-            while (($line = fgets($fh)) !== false) {
-                $trim = trim($line);
-
-                // Skip comments/empty
-                if ($trim === '' || str_starts_with($trim, '--') || str_starts_with($trim, '#')) {
-                    continue;
-                }
-
-                // Handle DELIMITER changes
-                if (preg_match('/^DELIMITER\s+(.+)$/i', $trim, $m)) {
-                    $delimiter = $m[1];
-                    continue;
-                }
-
-                $statement .= $line;
-
-                // End of statement?
-                if (substr(rtrim($statement), -strlen($delimiter)) === $delimiter) {
-                    $sql = substr($statement, 0, -strlen($delimiter));
-                    if ($mysqli->multi_query($sql) === false) {
-                        fclose($fh);
-                        throw new RuntimeException("SQL error: " . $mysqli->error);
-                    }
-                    // Flush any result sets
-                    while ($mysqli->more_results() && $mysqli->next_result()) { /* discard */ }
-                    $statement = '';
-                }
-            }
-            fclose($fh);
-        }
+    $too_large = false;
+    if (!isset($_FILES['backup_zip']) && $content_length > 0 && $max_upload_bytes > 0 && $content_length > $max_upload_bytes) {
+        $too_large = true;
+    } elseif (isset($_FILES['backup_zip']) && in_array($_FILES['backup_zip']['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+        $too_large = true;
     }
 
-    // ---------- 1) Validate uploaded backup ----------
+    if ($too_large) {
+        $_SESSION['alert_message'] = "That backup is too large to upload through a browser (this server accepts up to "
+            . backupFormatBytes($max_upload_bytes)
+            . "). Restore it from the command line instead - there is no size limit there. Copy the backup onto this server and run: php "
+            . dirname(__DIR__) . "/scripts/restore_cli.php --file=/path/to/backup.zip";
+        header("Location: ?restore");
+        exit;
+    }
+
     if (!isset($_FILES['backup_zip']) || $_FILES['backup_zip']['error'] !== UPLOAD_ERR_OK) {
-        die("No backup file uploaded or upload failed.");
+        $_SESSION['alert_message'] = "No backup file was uploaded, or the upload failed.";
+        header("Location: ?restore");
+        exit;
     }
 
-    $file = $_FILES['backup_zip'];
-    $fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if ($fileExt !== "zip") {
-        die("Only .zip files are allowed.");
+    if (strtolower(pathinfo($_FILES['backup_zip']['name'], PATHINFO_EXTENSION)) !== 'zip') {
+        $_SESSION['alert_message'] = "Only .zip backup archives can be restored.";
+        header("Location: ?restore");
+        exit;
     }
 
-    // ---------- 2) Save to secure temp ----------
-    $tempZip = tempnam(sys_get_temp_dir(), "restore_");
-    if (!move_uploaded_file($file["tmp_name"], $tempZip)) {
-        die("Failed to save uploaded backup file.");
-    }
-    @chmod($tempZip, 0600);
-
-    $zip = new ZipArchive;
-    if ($zip->open($tempZip) !== TRUE) {
-        @unlink($tempZip);
-        die("Failed to open backup zip file.");
+    // The key belongs to the install that MADE the backup, which on a rebuilt server is not
+    // this one, so it is asked for rather than read from config.php.
+    $restore_key = trim($_POST['backup_key'] ?? '');
+    if ($restore_key === '') {
+        $restore_key = $config_backup_key ?? '';
     }
 
-    // ---------- 3) Guard & extract OUTER zip ----------
-    $tempDir = sys_get_temp_dir() . "/restore_temp_" . uniqid("", true);
-    if (!mkdir($tempDir, 0700, true)) {
-        $zip->close();
-        @unlink($tempZip);
-        die("Failed to create temp directory.");
+    if ($restore_key === '') {
+        $_SESSION['alert_message'] = "Enter the backup encryption key. It is shown in Maintenance > Backup on the install that made this archive.";
+        header("Location: ?restore");
+        exit;
     }
 
-    // Zip-slip guard (outer)
-    for ($i = 0; $i < $zip->numFiles; $i++) {
-        $name = $zip->getNameIndex($i);
-        if ($name === false) continue;
-        if (strpos($name, '..') !== false || preg_match('#^(?:/|\\\\|[a-zA-Z]:[\\\\/])#', $name)) {
-            $zip->close();
-            @unlink($tempZip);
-            deleteDir($tempDir);
-            die("Invalid file path in outer ZIP.");
-        }
+    $temp_zip = tempnam(sys_get_temp_dir(), "itflow_restore_upload_");
+    if (!move_uploaded_file($_FILES['backup_zip']['tmp_name'], $temp_zip)) {
+        @unlink($temp_zip);
+        $_SESSION['alert_message'] = "Could not save the uploaded backup file.";
+        header("Location: ?restore");
+        exit;
+    }
+    @chmod($temp_zip, 0600);
+
+    $restore_error = null;
+    $restored = backupRestoreArchive($mysqli, $temp_zip, $restore_key, $restore_error);
+
+    @unlink($temp_zip);
+
+    if (!$restored) {
+        $_SESSION['alert_message'] = $restore_error;
+        header("Location: ?restore");
+        exit;
     }
 
-    if (!$zip->extractTo($tempDir)) {
-        $zip->close();
-        @unlink($tempZip);
-        deleteDir($tempDir);
-        die("Failed to extract backup contents.");
-    }
-
-    $zip->close();
-    @unlink($tempZip);
-
-    // ---------- 4) Restore SQL (via PHP, no CLI) ----------
-    $sqlPath = "$tempDir/db.sql";
-    if (file_exists($sqlPath)) {
-        // Drop-all first (foreign key safe)
-        mysqli_query($mysqli, "SET FOREIGN_KEY_CHECKS = 0");
-        $tables = mysqli_query($mysqli, "SHOW TABLES");
-        if ($tables) {
-            while ($row = mysqli_fetch_row($tables)) {
-                mysqli_query($mysqli, "DROP TABLE IF EXISTS `" . $row[0] . "`");
-            }
-        }
-        mysqli_query($mysqli, "SET FOREIGN_KEY_CHECKS = 1");
-
-        try {
-            importSqlFile($mysqli, $sqlPath);
-        } catch (Throwable $e) {
-            deleteDir($tempDir);
-            die("SQL import failed: " . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'));
-        }
+    // Close setup behind us. The gate above would now do this on its own because the
+    // restored database has users, but the flag is what stops the wizard being reachable
+    // at all.
+    $config_path = __DIR__ . "/../config.php";
+    if (@file_put_contents($config_path, "\n\$config_enable_setup = 0;\n\n", FILE_APPEND | LOCK_EX) === false) {
+        $_SESSION['alert_message'] = "Backup restored, but config.php could not be updated - please set \$config_enable_setup = 0 in it by hand.";
     } else {
-        deleteDir($tempDir);
-        die("Missing db.sql in the backup archive.");
+        $_SESSION['alert_message'] = "Backup restored. Log in with the credentials that were in use when the backup was taken.";
     }
 
-    // ---------- 5) Restore uploads directory ----------
-    $uploadDir  = rtrim(__DIR__ . "/../uploads", '/\\') . '/';
-    $uploadsZip = "$tempDir/uploads.zip";
-
-    if (!file_exists($uploadsZip)) {
-        deleteDir($tempDir);
-        die("Missing uploads.zip in the backup archive.");
-    }
-
-    $uploads = new ZipArchive;
-    if ($uploads->open($uploadsZip) !== TRUE) {
-        deleteDir($tempDir);
-        die("Failed to open uploads.zip in backup.");
-    }
-
-    // Zip-slip guard (inner)
-    for ($i = 0; $i < $uploads->numFiles; $i++) {
-        $name = $uploads->getNameIndex($i);
-        if ($name === false) continue;
-        if (strpos($name, '..') !== false || preg_match('#^(?:/|\\\\|[a-zA-Z]:[\\\\/])#', $name)) {
-            $uploads->close();
-            deleteDir($tempDir);
-            die("Invalid file path in uploads.zip.");
-        }
-    }
-
-    // Ensure uploads dir exists then clean it
-    if (!is_dir($uploadDir)) {
-        if (!mkdir($uploadDir, 0750, true)) {
-            $uploads->close();
-            deleteDir($tempDir);
-            die("Failed to create uploads directory.");
-        }
-    } else {
-        foreach (new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($uploadDir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        ) as $item) {
-            $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
-        }
-    }
-
-    // Extract uploads.zip directly into /uploads (your original, working behavior)
-    if (!$uploads->extractTo($uploadDir)) {
-        $uploads->close();
-        deleteDir($tempDir);
-        die("Failed to extract uploads.zip into uploads directory.");
-    }
-    $uploads->close();
-
-    // Verify uploads isn’t empty
-    $hasFiles = false;
-    $fileCount = 0; $dirCount = 0;
-    if (is_dir($uploadDir)) {
-        $it = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($uploadDir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-        foreach ($it as $node) {
-            if ($node->isDir()) $dirCount++;
-            else { $fileCount++; $hasFiles = true; }
-        }
-    }
-    if (!$hasFiles) {
-        deleteDir($tempDir);
-        die("Uploads restore appears empty after extraction.");
-    }
-
-    // ---------- 6) Optional: version info ----------
-    $versionTxt = "$tempDir/version.txt";
-    if (file_exists($versionTxt)) {
-        $versionInfo = @file_get_contents($versionTxt);
-        if ($versionInfo !== false) {
-            logAction("Backup Restore", "Version Info", $versionInfo);
-        }
-    }
-
-    // ---------- 7) Cleanup temp ----------
-    deleteDir($tempDir);
-
-    // ---------- 8) Finalize setup flag (append safely) ----------
-    $configPath = __DIR__ . "/../config.php";
-    $append = "\n\$config_enable_setup = 0;\n\n";
-    if (!@file_put_contents($configPath, $append, FILE_APPEND | LOCK_EX)) {
-        $_SESSION['alert_message'] = "Backup restored ($fileCount files, $dirCount folders), but couldn't update setup flag — please set \$config_enable_setup = 0 in config.php.";
-    } else {
-        $_SESSION['alert_message'] = "Full backup restored successfully ($fileCount files, $dirCount folders).";
-    }
-
-    // ---------- 9) Done ----------
     header("Location: ../login.php");
     exit;
 }
 
 if (isset($_POST['add_user'])) {
-    $user_count = mysqli_num_rows(mysqli_query($mysqli,"SELECT COUNT(*) FROM users"));
-    if ($user_count < 0) {
+
+    // SELECT COUNT(*) returns exactly one row whatever the count is, so the mysqli_num_rows()
+    // test this replaces was always 1 and never fired: a resubmitted form created a second
+    // user and then died on the duplicate user_settings row. $install_is_live is the same
+    // count, taken at the top of the file, and it fails closed.
+    if ($install_is_live) {
         $_SESSION['alert_message'] = "Users already exist in the database. Clear them to reconfigure here.";
         header("Location: ?company");
         exit;
     }
 
-    $name = sanitizeInput($_POST['name']);
-    $email = sanitizeInput($_POST['email']);
+    $name = escapeSql($_POST['name']);
+    $email = escapeSql($_POST['email']);
     $password = password_hash(trim($_POST['password']), PASSWORD_DEFAULT);
 
     //Generate master encryption key
@@ -383,7 +308,10 @@ if (isset($_POST['add_user'])) {
 
     mysqli_query($mysqli,"INSERT INTO users SET user_name = '$name', user_email = '$email', user_password = '$password', user_specific_encryption_ciphertext = '$user_specific_encryption_ciphertext', user_role_id = 3");
 
-    mkdirMissing("../uploads/users/1");
+    // Normally 1, but the table's AUTO_INCREMENT can already have moved on, so ask for it.
+    $user_id = intval(mysqli_insert_id($mysqli));
+
+    mkdirMissing("../uploads/users/$user_id");
 
     //Check to see if a file is attached
     if ($_FILES['file']['tmp_name'] != '') {
@@ -413,13 +341,13 @@ if (isset($_POST['add_user'])) {
 
         if ($file_error == 0) {
             // directory in which the uploaded file will be moved
-            $upload_file_dir = "../uploads/users/1/";
+            $upload_file_dir = "../uploads/users/$user_id/";
             $dest_path = $upload_file_dir . $new_file_name;
 
             move_uploaded_file($file_tmp_path, $dest_path);
 
             //Set Avatar
-            mysqli_query($mysqli,"UPDATE users SET user_avatar = '$new_file_name' WHERE user_id = 1");
+            mysqli_query($mysqli,"UPDATE users SET user_avatar = '$new_file_name' WHERE user_id = $user_id");
 
             $_SESSION['alert_message'] = 'File successfully uploaded.';
         } else {
@@ -429,7 +357,7 @@ if (isset($_POST['add_user'])) {
     }
 
     //Create Settings
-    mysqli_query($mysqli,"INSERT INTO user_settings SET user_id = 1");
+    mysqli_query($mysqli,"INSERT INTO user_settings SET user_id = $user_id");
 
     $_SESSION['alert_message'] = "User <strong>$name</strong> created";
 
@@ -440,16 +368,23 @@ if (isset($_POST['add_user'])) {
 
 if (isset($_POST['add_company_settings'])) {
 
-    $name = sanitizeInput($_POST['name']);
-    $country = sanitizeInput($_POST['country']);
-    $address = sanitizeInput($_POST['address']);
-    $city = sanitizeInput($_POST['city']);
-    $state = sanitizeInput($_POST['state']);
-    $zip = sanitizeInput($_POST['zip']);
+    // Run once. A second pass would add a second companies row and re-seed the defaults.
+    if ($company_exists) {
+        $_SESSION['alert_message'] = "Company details have already been saved.";
+        header("Location: ?localization");
+        exit;
+    }
+
+    $name = escapeSql($_POST['name']);
+    $country = escapeSql($_POST['country']);
+    $address = escapeSql($_POST['address']);
+    $city = escapeSql($_POST['city']);
+    $state = escapeSql($_POST['state']);
+    $zip = escapeSql($_POST['zip']);
     $phone = preg_replace("/[^0-9]/", '',$_POST['phone']);
-    $email = sanitizeInput($_POST['email']);
-    $website = sanitizeInput($_POST['website']);
-    $tax_id = sanitizeInput($_POST['tax_id']);
+    $email = escapeSql($_POST['email']);
+    $website = escapeSql($_POST['website']);
+    $tax_id = escapeSql($_POST['tax_id']);
 
     mysqli_query($mysqli,"INSERT INTO companies SET company_name = '$name', company_address = '$address', company_city = '$city', company_state = '$state', company_zip = '$zip', company_country = '$country', company_phone = '$phone', company_email = '$email', company_website = '$website', company_tax_id = '$tax_id'");
 
@@ -495,137 +430,8 @@ if (isset($_POST['add_company_settings'])) {
         }
     }
 
-    $latest_database_version = LATEST_DATABASE_VERSION;
-    mysqli_query($mysqli,"INSERT INTO settings SET company_id = 1, config_current_database_version = '$latest_database_version', config_invoice_prefix = 'INV-', config_invoice_next_number = 1, config_recurring_invoice_prefix = 'REC-', config_invoice_overdue_reminders = '1,3,7', config_quote_prefix = 'QUO-', config_quote_next_number = 1, config_default_net_terms = 30, config_ticket_next_number = 1, config_ticket_prefix = 'TCK-'");
-
-    // Create Categories
-    // Expense Categories Examples
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Office Supplies', category_type = 'Expense', category_color = 'blue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Travel', category_type = 'Expense', category_color = 'purple'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Advertising', category_type = 'Expense', category_color = 'orange'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Processing Fee', category_type = 'Expense', category_color = 'gray'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Shipping and Postage', category_type = 'Expense', category_color = 'teal'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Software', category_type = 'Expense', category_color = 'lightblue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Bank Fees', category_type = 'Expense', category_color = 'yellow'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Payroll', category_type = 'Expense', category_color = 'green'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Professional Services', category_type = 'Expense', category_color = 'darkblue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Contractor', category_type = 'Expense', category_color = 'brown'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Insurance', category_type = 'Expense', category_color = 'red'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Infrastructure', category_type = 'Expense', category_color = 'darkgreen'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Equipment', category_type = 'Expense', category_color = 'gray'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Education', category_type = 'Expense', category_color = 'lightyellow'");
-
-    // Income Categories Examples
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Managed Services', category_type = 'Income', category_color = 'green'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Consulting', category_type = 'Income', category_color = 'blue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Projects', category_type = 'Income', category_color = 'purple'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Hardware Sales', category_type = 'Income', category_color = 'silver'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Software Sales', category_type = 'Income', category_color = 'lightblue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Cloud Services', category_type = 'Income', category_color = 'skyblue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Support', category_type = 'Income', category_color = 'yellow'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Training', category_type = 'Income', category_color = 'lightyellow'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Telecom Services', category_type = 'Income', category_color = 'orange'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Backup', category_type = 'Income', category_color = 'darkblue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Security', category_type = 'Income', category_color = 'red'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Licensing', category_type = 'Income', category_color = 'green'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Monitoring', category_type = 'Income', category_color = 'teal'");
-
-    // Referral Examples
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Friend', category_type = 'Referral', category_color = 'blue'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Search', category_type = 'Referral', category_color = 'orange'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Social Media', category_type = 'Referral', category_color = 'green'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Email', category_type = 'Referral', category_color = 'yellow'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Partner', category_type = 'Referral', category_color = 'purple'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Event', category_type = 'Referral', category_color = 'red'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Affiliate', category_type = 'Referral', category_color = 'pink'");
-    mysqli_query($mysqli,"INSERT INTO categories SET category_name = 'Client', category_type = 'Referral', category_color = 'lightblue'");
-
-    // Payment Methods
-    mysqli_query($mysqli,"INSERT INTO payment_methods SET payment_method_name = 'Cash'");
-    mysqli_query($mysqli,"INSERT INTO payment_methods SET payment_method_name = 'Check'");
-    mysqli_query($mysqli,"INSERT INTO payment_methods SET payment_method_name = 'Bank Transfer'");
-    mysqli_query($mysqli,"INSERT INTO payment_methods SET payment_method_name = 'Credit Card'");
-
-    // Default Calendar
-    mysqli_query($mysqli,"INSERT INTO calendars SET calendar_name = 'Default', calendar_color = 'blue'");
-
-    // Add default ticket statuses
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'New', ticket_status_color = '#dc3545'"); // Default ID for new tickets is 1
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Open', ticket_status_color = '#007bff'"); // 2
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'On Hold', ticket_status_color = '#28a745'"); // 3
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Resolved', ticket_status_color = '#343a40'"); // 4 (was auto-close)
-    mysqli_query($mysqli, "INSERT INTO ticket_statuses SET ticket_status_name = 'Closed', ticket_status_color = '#343a40'"); // 5
-
-    // Add default modules
-    mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_client', module_description = 'General client & contact management'");
-    mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_support', module_description = 'Access to ticketing, assets and documentation'");
-    mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_credential', module_description = 'Access to client credentials - usernames, passwords and 2FA codes'");
-    mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_sales', module_description = 'Access to quotes, invoices and products'");
-    mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_financial', module_description = 'Access to payments, accounts, expenses and budgets'");
-    mysqli_query($mysqli, "INSERT INTO modules SET module_name = 'module_reporting', module_description = 'Access to all reports'");
-
-    // Add default roles
-    mysqli_query($mysqli, "INSERT INTO user_roles SET role_id = 1, role_name = 'Accountant', role_description = 'Built-in - Limited access to financial-focused modules'");
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 1, module_id = 1, user_role_permission_level = 1"); // Read clients
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 1, module_id = 2, user_role_permission_level = 1"); // Read support
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 1, module_id = 4, user_role_permission_level = 1"); // Read sales
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 1, module_id = 5, user_role_permission_level = 2"); // Modify financial
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 1, module_id = 6, user_role_permission_level = 1"); // Read reports
-
-    mysqli_query($mysqli, "INSERT INTO user_roles SET role_id = 2, role_name = 'Technician', role_description = 'Built-in - Limited access to technical-focused modules'");
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 2, module_id = 1, user_role_permission_level = 2"); // Modify clients
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 2, module_id = 2, user_role_permission_level = 2"); // Modify support
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 2, module_id = 3, user_role_permission_level = 2"); // Modify credentials
-    mysqli_query($mysqli, "INSERT INTO user_role_permissions SET user_role_id = 2, module_id = 4, user_role_permission_level = 2"); // Modify sales
-
-    mysqli_query($mysqli, "INSERT INTO user_roles SET role_id = 3, role_name = 'Administrator', role_description = 'Built-in - Full administrative access to all modules (including user management)', role_is_admin = 1");
-
-    // Custom Links
-    mysqli_query($mysqli,"INSERT INTO custom_links SET custom_link_name = 'Docs', custom_link_uri = 'https://docs.itflow.org', custom_link_new_tab = 1, custom_link_icon = 'question-circle'");
-
-    // network_interfaces
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Ethernet', category_type = 'network_interface', category_order = 1"); // 1
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'SFP', category_type = 'network_interface', category_order = 2"); // 2
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'SFP+', category_type = 'network_interface', category_order = 3"); // 3
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'QSFP28', category_type = 'network_interface', category_order = 4"); // 4
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'QSFP-DD', category_type = 'network_interface', category_order = 5"); // 5
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Coaxial', category_type = 'network_interface', category_order = 6"); // 6
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Fiber', category_type = 'network_interface', category_order = 7"); // 7
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'WiFi', category_type = 'network_interface', category_order = 8"); // 8
-
-    // Asset statuses
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Ready to Deploy', category_description = 'Asset is configured and ready to be assigned', category_type = 'asset_status', category_order = 1"); // 1
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Deployed', category_description = 'Asset is actively in use and assigned to a client or location', category_type = 'asset_status', category_order = 2"); // 2
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Out for Repair', category_description = 'Asset has been sent out for servicing or repair', category_type = 'asset_status', category_order = 3"); // 3
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Lost', category_description = 'Asset location is unknown and cannot be accounted for', category_type = 'asset_status', category_order = 4"); // 4
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Stolen', category_description = 'Asset has been reported stolen', category_type = 'asset_status', category_order = 5"); // 5
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Retired', category_description = 'Asset has been decommissioned and is no longer in service', category_type = 'asset_status', category_order = 6"); // 6
-
-    // Contact note types
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Call', category_description = 'Phone call with a client or contact', category_icon = 'fa-phone-alt', category_type = 'contact_note_type', category_order = 1"); // 1
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Email', category_description = 'Email correspondence with a client or contact', category_icon = 'fa-envelope', category_type = 'contact_note_type', category_order = 2"); // 2
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Meeting', category_description = 'Scheduled meeting with a client or contact', category_icon = 'fa-handshake', category_type = 'contact_note_type', category_order = 3"); // 3
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'In Person', category_description = 'In person visit or on-site interaction', category_icon = 'fa-people-arrows', category_type = 'contact_note_type', category_order = 4"); // 4
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Note', category_description = 'General note or internal comment', category_icon = 'fa-sticky-note', category_type = 'contact_note_type', category_order = 5"); // 5
-
-    // Rack Types
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = '2-Post Open Frame', category_description = 'Two-post open frame rack for patch panels and lightweight equipment', category_type = 'rack_type', category_order = 1"); // 1
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = '4-Post Open Frame', category_description = 'Four-post open frame rack for servers and heavier equipment', category_type = 'rack_type', category_order = 2"); // 2
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = '4-Post Enclosed Cabinet', category_description = 'Four-post enclosed cabinet with doors and sides for secure equipment housing', category_type = 'rack_type', category_order = 3"); // 3
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Wall-Mount Open', category_description = 'Open frame rack mounted directly to a wall for small deployments', category_type = 'rack_type', category_order = 4"); // 4
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Wall-Mount Enclosed', category_description = 'Enclosed cabinet rack mounted to a wall with a locking door', category_type = 'rack_type', category_order = 5"); // 5
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Other', category_description = 'Rack type does not fit any standard category', category_type = 'rack_type', category_order = 6"); // 6
-
-    // Software Types
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Software as a Service (SaaS)', category_description = 'Cloud-hosted software accessed via a web browser or API', category_type = 'software_type', category_order = 1"); // 1
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Productivity Suite', category_description = 'Bundled office and collaboration tools such as Microsoft 365 or Google Workspace', category_type = 'software_type', category_order = 2"); // 2
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Web Application', category_description = 'Application hosted on a web server and accessed through a browser', category_type = 'software_type', category_order = 3"); // 3
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Desktop Application', category_description = 'Application installed and run locally on a workstation or laptop', category_type = 'software_type', category_order = 4"); // 4
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Mobile Application', category_description = 'Application installed and run on a mobile device or tablet', category_type = 'software_type', category_order = 5"); // 5
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Security Software', category_description = 'Software providing antivirus, endpoint protection, or security monitoring', category_type = 'software_type', category_order = 6"); // 6
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'System Software', category_description = 'Low-level software managing hardware resources and system operations', category_type = 'software_type', category_order = 7"); // 7
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Operating System', category_description = 'Core software managing hardware and providing a platform for applications', category_type = 'software_type', category_order = 8"); // 8
-    mysqli_query($mysqli, "INSERT INTO categories SET category_name = 'Other', category_description = 'Software type does not fit any standard category', category_type = 'software_type', category_order = 9"); // 9
+    // Seed the defaults shared with the CLI installer
+    seedDefaultData($mysqli);
 
     $_SESSION['alert_message'] = "Company <strong>$name</strong> created";
 
@@ -635,9 +441,16 @@ if (isset($_POST['add_company_settings'])) {
 
 if (isset($_POST['add_localization_settings'])) {
 
-    $locale = sanitizeInput($_POST['locale']);
-    $currency_code = sanitizeInput($_POST['currency_code']);
-    $timezone = sanitizeInput($_POST['timezone']);
+    // Run once. A second pass would add a second Cash account.
+    if ($localization_done) {
+        $_SESSION['alert_message'] = "Localization has already been saved.";
+        header("Location: ?telemetry");
+        exit;
+    }
+
+    $locale = escapeSql($_POST['locale']);
+    $currency_code = escapeSql($_POST['currency_code']);
+    $timezone = escapeSql($_POST['timezone']);
 
     mysqli_query($mysqli,"UPDATE companies SET company_locale = '$locale', company_currency = '$currency_code' WHERE company_id = 1");
 
@@ -659,9 +472,10 @@ if (isset($_POST['add_telemetry'])) {
 
         mysqli_query($mysqli,"UPDATE settings SET config_telemetry = 2");
 
-        $comments = sanitizeInput($_POST['comments']);
+        $comments = escapeSql($_POST['comments']);
 
-        $sql = mysqli_query($mysqli,"SELECT * FROM companies WHERE company_id = 1");
+        $sql = mysqli_query($mysqli,"SELECT company_city, company_country, company_currency, company_name, company_state,
+            company_website FROM companies WHERE company_id = 1");
         $row = mysqli_fetch_assoc($sql);
 
         $company_name = $row['company_name'];
@@ -718,7 +532,7 @@ if (isset($_POST['add_telemetry'])) {
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="light" data-lte-color-mode="off">
 
 <head>
     <meta charset="utf-8">
@@ -728,26 +542,26 @@ if (isset($_POST['add_telemetry'])) {
     <title>ITFlow Setup</title>
 
     <!-- Font Awesome Icons -->
-    <link rel="stylesheet" href="/plugins/fontawesome-free/css/all.min.css">
+    <link rel="stylesheet" href="/libs/fontawesome-free/css/all.min.css">
     <!-- Theme style -->
-    <link rel="stylesheet" href="/plugins/adminlte/css/adminlte.min.css">
+    <link rel="stylesheet" href="/libs/adminlte/css/adminlte.min.css">
     <!-- Custom Style Sheet -->
-    <link href="/plugins/select2/css/select2.min.css" rel="stylesheet" type="text/css">
-    <link href="/plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css" rel="stylesheet" type="text/css">
+    <link href="/libs/tom-select/css/tom-select.bootstrap5.min.css" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="/css/itflow_custom.css">
 
 </head>
 
 <body class="hold-transition sidebar-mini">
 
-<div class="wrapper text-sm">
+<div class="app-wrapper text-sm">
 
     <!-- Navbar -->
-    <nav class="main-header navbar navbar-expand navbar-primary navbar-dark">
+    <nav class="app-header navbar navbar-expand" data-bs-theme="dark">
 
         <!-- Left navbar links -->
         <ul class="navbar-nav">
             <li class="nav-item">
-                <a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a>
+                <a class="nav-link" data-lte-toggle="sidebar" href="#"><i class="fas fa-bars"></i></a>
             </li>
         </ul>
 
@@ -758,19 +572,21 @@ if (isset($_POST['add_telemetry'])) {
     <!-- /.navbar -->
 
     <!-- Main Sidebar Container -->
-    <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <aside class="app-sidebar shadow" data-bs-theme="dark">
 
         <!-- Brand Logo -->
-        <a href="https://itflow.org" class="brand-link">
-            <h3 class="brand-text font-weight-light"><i class="fas fa-paper-plane text-primary mr-2"></i><span class="text-primary text-bold">IT</span>Flow</h3>
-        </a>
+        <div class="sidebar-brand">
+            <a href="https://itflow.org" class="brand-link">
+                <h3 class="brand-text fw-light mb-0"><i class="fas fa-paper-plane text-primary me-2"></i><span class="text-primary text-bold">IT</span>Flow</h3>
+            </a>
+        </div>
 
         <!-- Sidebar -->
         <div class="sidebar">
 
             <!-- Sidebar Menu -->
             <nav class="mt-2">
-                <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+                <ul class="nav nav-pills sidebar-menu flex-column" data-lte-toggle="treeview" role="menu" data-accordion="false">
                     <li class="nav-item">
                         <a href="index.php" class="nav-link <?php if (!isset($_GET) || empty($_GET)) { echo 'active'; } ?>">
                             <i class="nav-icon fas fa-home text-info"></i>
@@ -831,7 +647,7 @@ if (isset($_POST['add_telemetry'])) {
     </aside>
 
     <!-- Content Wrapper. Contains page content -->
-    <div class="content-wrapper">
+    <main class="app-main">
 
         <!-- Main content -->
         <div class="content mt-3">
@@ -842,8 +658,8 @@ if (isset($_POST['add_telemetry'])) {
                 if (!empty($_SESSION['alert_message'])) {
                     ?>
                     <div class="alert alert-info" id="alert">
-                        <?php echo nullable_htmlentities($_SESSION['alert_message']); ?>
-                        <button class='close' data-dismiss='alert'>&times;</button>
+                        <?= alertMessageHtml($_SESSION['alert_message']) ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                     <?php
                     $_SESSION['alert_type'] = '';
@@ -890,7 +706,7 @@ if (isset($_POST['add_telemetry'])) {
                     ];
 
                     // Check upload_max_filesize and post_max_size >= 500M
-                    function return_bytes($val) {
+                    function toBytes($val) {
                         $val = trim($val);
                         $unit = strtolower(substr($val, -1));
                         $num = (float)$val;
@@ -910,8 +726,8 @@ if (isset($_POST['add_telemetry'])) {
                     $upload_max_filesize = ini_get('upload_max_filesize');
                     $post_max_size = ini_get('post_max_size');
 
-                    $upload_passed = return_bytes($upload_max_filesize) >= $required_bytes;
-                    $post_passed = return_bytes($post_max_size) >= $required_bytes;
+                    $upload_passed = toBytes($upload_max_filesize) >= $required_bytes;
+                    $post_passed = toBytes($post_max_size) >= $required_bytes;
 
                     $phpConfig[] = [
                         'name' => 'upload_max_filesize >= 500M',
@@ -938,27 +754,17 @@ if (isset($_POST['add_telemetry'])) {
                     // Section: Shell Commands
                     $shellCommands = [];
 
-                    if ($shell_exec_enabled) {
-                        $commands = ['whois', 'dig', 'git'];
-
-                        foreach ($commands as $command) {
-                            $which = trim(shell_exec("which $command 2>/dev/null"));
-                            $exists = !empty($which);
-                            $shellCommands[] = [
-                                'name' => "Command '$command' available",
-                                'passed' => $exists,
-                                'value' => $exists ? $which : 'Not Found',
-                            ];
-                        }
-                    } else {
-                        // If shell_exec is disabled, mark commands as unavailable
-                        foreach (['whois', 'dig', 'git'] as $command) {
-                            $shellCommands[] = [
-                                'name' => "Command '$command' available",
-                                'passed' => false,
-                                'value' => 'shell_exec Disabled',
-                            ];
-                        }
+                    // Located by walking PATH rather than by running `which`, so this reports
+                    // the truth on a host with shell_exec disabled. The no-shell branch this
+                    // replaces also still listed whois and dig, which ITFlow stopped shelling
+                    // out to when domain lookups moved to RDAP and native DNS
+                    foreach (['git'] as $command) {
+                        $path = commandPath($command);
+                        $shellCommands[] = [
+                            'name' => "Command '$command' available",
+                            'passed' => $path !== '',
+                            'value' => $path !== '' ? $path : 'Not Found',
+                        ];
                     }
 
                     // Section: SSL Checks
@@ -1036,7 +842,7 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-check mr-2"></i>Step 1 - Setup Checks</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-check me-2"></i>Step 1 - Setup Checks</h3>
                         </div>
                         <div class="card-body">
                             <table class="table table-sm table-bordered">
@@ -1153,7 +959,7 @@ if (isset($_POST['add_telemetry'])) {
 
                             <hr>
 
-                            <a href="?database" class="btn btn-primary text-bold">Next (Database)<i class="fa fa-fw fa-arrow-circle-right ml-2"></i></a>
+                            <a href="?database" class="btn btn-primary text-bold">Next (Database)<i class="fa fa-fw fa-arrow-circle-right ms-2"></i></a>
                         </div>
                     </div>
 
@@ -1161,7 +967,7 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-database mr-2"></i>Step 2 - Connect your Database</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-database me-2"></i>Step 2 - Connect your Database</h3>
                         </div>
                         <div class="card-body">
                             <?php
@@ -1170,7 +976,7 @@ if (isset($_POST['add_telemetry'])) {
                                 echo "<p>Database is already configured. Any further changes should be made by editing the <code>config.php</code> file.</p>";
 
                                 if (@$mysqli) {
-                                    echo "<a href='?user' class='btn btn-success text-bold mt-3'>Next Step (User Setup) <i class='fa fa-fw fa-arrow-circle-right ml-2'></i></a>";
+                                    echo "<a href='?user' class='btn btn-success text-bold mt-3'>Next Step (User Setup) <i class='fa fa-fw fa-arrow-circle-right ms-2'></i></a>";
                                 } else {
                                     echo "<div class='alert alert-danger mt-3'>Database connection failed. Check <code>config.php</code>.</div>";
                                 }
@@ -1181,22 +987,18 @@ if (isset($_POST['add_telemetry'])) {
 
                                     <h5>Database Connection Details</h5>
 
-                                    <div class="form-group">
+                                    <div class="mb-3">
                                         <label>Database Name <strong class="text-danger">*</strong></label>
                                         <div class="input-group">
-                                            <div class="input-group-prepend">
                                                 <span class="input-group-text"><i class="fa fa-fw fa-database"></i></span>
-                                            </div>
                                             <input type="text" class="form-control" name="database" placeholder="Database name" autofocus required>
                                         </div>
                                     </div>
 
-                                    <div class="form-group">
+                                    <div class="mb-3">
                                         <label>Database Host <strong class="text-danger">*</strong></label>
                                         <div class="input-group">
-                                            <div class="input-group-prepend">
                                                 <span class="input-group-text"><i class="fa fa-fw fa-server"></i></span>
-                                            </div>
                                             <input type="text" class="form-control" name="host" value="localhost" placeholder="Database Host" required>
                                         </div>
                                     </div>
@@ -1204,32 +1006,26 @@ if (isset($_POST['add_telemetry'])) {
                                     <br>
                                     <h5>Database Authentication Details</h5>
 
-                                    <div class="form-group">
+                                    <div class="mb-3">
                                         <label>Database User <strong class="text-danger">*</strong></label>
                                         <div class="input-group">
-                                            <div class="input-group-prepend">
                                                 <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                                            </div>
                                             <input type="text" class="form-control" name="username" placeholder="Database user account" required>
                                         </div>
                                     </div>
 
-                                    <div class="form-group">
+                                    <div class="mb-3">
                                         <label>Database Password <strong class="text-danger">*</strong></label>
                                         <div class="input-group">
-                                            <div class="input-group-prepend">
                                                 <span class="input-group-text"><i class="fa fa-fw fa-lock"></i></span>
-                                            </div>
                                             <input type="password" class="form-control" data-toggle="password" name="password" placeholder="Database user password" autocomplete="new-password" required>
-                                            <div class="input-group-append">
                                                 <span class="input-group-text"><i class="fa fa-fw fa-eye"></i></span>
-                                            </div>
                                         </div>
                                     </div>
 
                                     <hr>
                                     <button type="submit" name="add_database" class="btn btn-primary text-bold">
-                                        Next (First User)<i class="fas fa-fw fa-arrow-circle-right ml-2"></i>
+                                        Next (First User)<i class="fas fa-fw fa-arrow-circle-right ms-2"></i>
                                     </button>
                                 </form>
                             <?php } ?>
@@ -1241,28 +1037,45 @@ if (isset($_POST['add_telemetry'])) {
                     <?php if (!$can_show_restore) { ?>
                         <div class="card card-danger">
                             <div class="card-header">
-                                <h3 class="card-title"><i class="fas fa-exclamation-triangle mr-2"></i>Database Not Ready</h3>
+                                <h3 class="card-title"><i class="fas fa-exclamation-triangle me-2"></i>Database Not Ready</h3>
                             </div>
                             <div class="card-body text-center">
                                 <p>You must configure the database before restoring a backup.</p>
                                 <a href="?database" class="btn btn-primary text-bold">
-                                    Go to Database Setup <i class="fas fa-arrow-right ml-2"></i>
+                                    Go to Database Setup <i class="fas fa-arrow-right ms-2"></i>
                                 </a>
                             </div>
                         </div>
                     <?php } else { ?>
                         <div class="card card-dark">
                             <div class="card-header">
-                                <h3 class="card-title"><i class="fas fa-fw fa-database mr-2"></i>Restore from Backup</h3>
+                                <h3 class="card-title"><i class="fas fa-fw fa-database me-2"></i>Restore from Backup</h3>
                             </div>
                             <div class="card-body">
+                                <?php $setup_max_upload = backupMaxUploadBytes(); ?>
+
                                 <form method="post" enctype="multipart/form-data" autocomplete="off">
-                                    <label>Restore ITFlow Backup (.zip)</label>
-                                    <input type="file" name="backup_zip" accept=".zip" required>
-                                    <p class="text-muted mt-2 mb-0"><small>Large restores may take several minutes. Do not close this page.</small></p>
+                                    <div class="mb-3">
+                                        <label>ITFlow backup archive (.zip)</label>
+                                        <input type="file" name="backup_zip" accept=".zip" class="form-control" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label>Backup encryption key</label>
+                                        <input type="text" name="backup_key" class="form-control" placeholder="The key from the install that made this backup" autocomplete="off" required>
+                                        <small class="text-muted">Shown in Maintenance &gt; Backup on that install. The archive cannot be opened without it.</small>
+                                    </div>
+
+                                    <div class="alert alert-warning mb-0">
+                                        <strong>This server accepts uploads up to <?= escapeHtml(backupFormatBytes($setup_max_upload)) ?>.</strong>
+                                        A full backup is usually larger than that. If yours is, copy it onto the server and restore from the
+                                        command line instead - there is no size limit there:
+                                        <pre class="bg-dark text-white p-2 mt-2 mb-0"><?= escapeHtml("php " . dirname(__DIR__) . "/scripts/restore_cli.php --file=/path/to/backup.zip") ?></pre>
+                                    </div>
+
+                                    <p class="text-muted mt-2 mb-0"><small>The restore replaces the database and the uploads folder. Large restores take several minutes - do not close this page.</small></p>
                                     <hr>
                                     <button type="submit" name="restore" class="btn btn-primary text-bold">
-                                        Restore Backup<i class="fas fa-fw fa-upload ml-2"></i>
+                                        Restore Backup<i class="fas fa-fw fa-upload ms-2"></i>
                                     </button>
                                 </form>
                             </div>
@@ -1273,53 +1086,56 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-user mr-2"></i>Step 3 - Create your first user</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-user me-2"></i>Step 3 - Create your first user</h3>
                         </div>
                         <div class="card-body">
 
+                            <?php if ($install_is_live): ?>
+
+                                <p>This install already has a user - the rest of your team is added from Admin &gt; Users once you are logged in.</p>
+                                <hr>
+                                <a href="?<?= $resume_step ?>" class="btn btn-primary text-bold">Continue Setup <i class="fa fa-fw fa-arrow-circle-right"></i></a>
+
+                            <?php else: ?>
+
                             <form method="post" enctype="multipart/form-data" autocomplete="off">
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Name <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                                        </div>
-                                        <input type="text" class="form-control" name="name" placeholder="Full Name" autofocus required>
+                                        <input type="text" class="form-control" name="name" placeholder="Full Name" maxlength="200" autofocus required>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Email <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-envelope"></i></span>
-                                        </div>
-                                        <input type="email" class="form-control" name="email" placeholder="Email Address" required>
+                                        <input type="email" class="form-control" name="email" placeholder="Email Address" maxlength="200" required>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Password <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-lock"></i></span>
-                                        </div>
                                         <input type="password" class="form-control" data-toggle="password" name="password" placeholder="Enter a Password" autocomplete="new-password" required minlength="8">
-                                        <div class="input-group-append">
                                             <span class="input-group-text"><i class="fa fa-fw fa-eye"></i></span>
-                                        </div>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Avatar</label>
-                                    <input type="file" class="form-control-file" accept="image/*;capture=camera" name="file">
+                                    <input type="file" class="form-control" accept="image/*;capture=camera" name="file">
                                 </div>
 
                                 <hr>
 
                                 <button type="submit" name="add_user" class="btn btn-primary text-bold">Next (Company details) <i class="fa fa-fw fa-arrow-circle-right"></i></button>
                             </form>
+
+                            <?php endif; ?>
+
                         </div>
                     </div>
 
@@ -1327,117 +1143,105 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-briefcase mr-2"></i>Step 4 - Company Details</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-briefcase me-2"></i>Step 4 - Company Details</h3>
                         </div>
                         <div class="card-body">
+
+                            <?php if ($company_exists): ?>
+
+                                <p>Company details have already been saved - they can be changed later from Admin &gt; Settings.</p>
+                                <hr>
+                                <a href="?<?= $resume_step ?>" class="btn btn-primary text-bold">Continue Setup <i class="fa fa-fw fa-arrow-circle-right"></i></a>
+
+                            <?php else: ?>
                             <form method="post" enctype="multipart/form-data" autocomplete="off">
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Company Name <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-building"></i></span>
-                                        </div>
-                                        <input type="text" class="form-control" name="name" placeholder="Company Name" autofocus required>
+                                        <input type="text" class="form-control" name="name" placeholder="Company Name" maxlength="200" autofocus required>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Logo</label>
-                                    <input type="file" class="form-control-file" name="file" accept=".jpg, .jpeg, .png">
+                                    <input type="file" class="form-control" name="file" accept=".jpg, .jpeg, .png">
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Address</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-map-marker-alt"></i></span>
-                                        </div>
                                         <input type="text" class="form-control" name="address" placeholder="Street Address">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>City</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-city"></i></span>
-                                        </div>
                                         <input type="text" class="form-control" name="city" placeholder="City">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>State / Province</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-flag"></i></span>
-                                        </div>
                                         <input type="text" class="form-control" name="state" placeholder="State or Province">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Postal Code</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fab fa-fw fa-usps"></i></span>
-                                        </div>
                                         <input type="text" class="form-control" name="zip" placeholder="Zip or Postal Code">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Country <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-globe-americas"></i></span>
-                                        </div>
-                                        <select class="form-control select2" name="country" required>
+                                        <select class="form-select select2" name="country" required>
                                             <option value="">- Country -</option>
                                             <?php foreach($countries_array as $country_name) { ?>
-                                                <option><?php echo $country_name; ?></option>
+                                                <option data-iso2="<?= $country_iso2_array[$country_name] ?? '' ?>"><?= $country_name ?></option>
                                             <?php } ?>
                                         </select>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Phone</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-phone"></i></span>
-                                        </div>
                                         <input type="tel" class="form-control" name="phone" placeholder="Phone Number">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Email</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-envelope"></i></span>
-                                        </div>
-                                        <input type="email" class="form-control" name="email" placeholder="Company Email address eg: info@company.com">
+                                        <input type="email" class="form-control" name="email" placeholder="Company Email address eg: info@company.com" maxlength="200">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Website</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-globe"></i></span>
-                                        </div>
                                         <input type="text" class="form-control" name="website" placeholder="Website address">
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Tax ID</label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-balance-scale"></i></span>
-                                        </div>
                                         <input type="text" class="form-control" name="tax_id" placeholder="Tax ID" maxlength="200">
                                     </div>
                                 </div>
@@ -1445,10 +1249,13 @@ if (isset($_POST['add_telemetry'])) {
                                 <hr>
 
                                 <button type="submit" name="add_company_settings" class="btn btn-primary text-bold">
-                                    Next (Localization)<i class="fas fa-fw fa-arrow-circle-right ml-2"></i>
+                                    Next (Localization)<i class="fas fa-fw fa-arrow-circle-right ms-2"></i>
                                 </button>
 
                             </form>
+
+                            <?php endif; ?>
+
                         </div>
                     </div>
 
@@ -1456,51 +1263,53 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-globe-americas mr-2"></i>Step 5 - Region and Language</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-globe-americas me-2"></i>Step 5 - Region and Language</h3>
                         </div>
                         <div class="card-body">
+
+                            <?php if ($localization_done): ?>
+
+                                <p>Localization has already been saved - it can be changed later from Admin &gt; Settings.</p>
+                                <hr>
+                                <a href="?<?= $resume_step ?>" class="btn btn-primary text-bold">Continue Setup <i class="fa fa-fw fa-arrow-circle-right"></i></a>
+
+                            <?php else: ?>
                             <form method="post" autocomplete="off">
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Language <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-language"></i></span>
-                                        </div>
-                                        <select class="form-control select2" name="locale" required>
+                                        <select class="form-select select2" name="locale" required>
                                             <option value="">- Select a Language -</option>
                                             <?php foreach($locales_array as $locale_code => $locale_name) { ?>
-                                                <option value="<?php echo $locale_code; ?>"><?php echo $locale_name; ?></option>
+                                                <option value="<?= $locale_code ?>"><?= $locale_name ?></option>
                                             <?php } ?>
                                         </select>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Currency <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-money-bill"></i></span>
-                                        </div>
-                                        <select class="form-control select2" name="currency_code" required>
+                                        <select class="form-select select2" name="currency_code" required>
                                             <option value="">- Select a Currency -</option>
                                             <?php foreach($currencies_array as $currency_code => $currency_name) { ?>
-                                                <option value="<?php echo $currency_code; ?>"><?php echo "$currency_code - $currency_name"; ?></option>
+                                                <option value="<?= $currency_code ?>"><?= "$currency_code - $currency_name" ?></option>
                                             <?php } ?>
                                         </select>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Timezone <strong class="text-danger">*</strong></label>
                                     <div class="input-group">
-                                        <div class="input-group-prepend">
                                             <span class="input-group-text"><i class="fa fa-fw fa-business-time"></i></span>
-                                        </div>
-                                        <select class="form-control select2" name="timezone" required>
+                                        <select class="form-select select2" name="timezone" required>
                                             <option value="">- Select a Timezone -</option>
                                             <?php foreach ($timezones as $tz) { ?>
-                                                <option value="<?php echo $tz; ?>"><?php echo $tz; ?></option>
+                                                <option value="<?= $tz ?>"><?= $tz ?></option>
                                             <?php } ?>
                                         </select>
                                     </div>
@@ -1509,10 +1318,13 @@ if (isset($_POST['add_telemetry'])) {
                                 <hr>
 
                                 <button type="submit" name="add_localization_settings" class="btn btn-primary text-bold">
-                                    Next (Telemetry Settings)<i class="fas fa-fw fa-arrow-circle-right ml-2"></i>
+                                    Next (Telemetry Settings)<i class="fas fa-fw fa-arrow-circle-right ms-2"></i>
                                 </button>
 
                             </form>
+
+                            <?php endif; ?>
+
                         </div>
                     </div>
 
@@ -1521,7 +1333,7 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-broadcast-tower mr-2"></i>Step 6 - Telemetry</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-broadcast-tower me-2"></i>Step 6 - Telemetry</h3>
                         </div>
                         <div class="card-body">
                             <form method="post" autocomplete="off">
@@ -1531,12 +1343,12 @@ if (isset($_POST['add_telemetry'])) {
 
                                 <div class="form-check">
                                     <input type="checkbox" class="form-check-input" name="share_data" value="1">
-                                    <label class="form-check-label ml-2">Share <small class="form-text"><a href="https://docs.itflow.org/telemetry" target="_blank">Click Here for additional details regarding the information we gather <i class="fas fa-external-link-alt"></i></a></small></label>
+                                    <label class="form-check-label ms-2">Share <small class="form-text"><a href="https://docs.itflow.org/telemetry" target="_blank">Click Here for additional details regarding the information we gather <i class="fas fa-external-link-alt"></i></a></small></label>
                                 </div>
 
                                 <br>
 
-                                <div class="form-group">
+                                <div class="mb-3">
                                     <label>Comments</label>
                                     <textarea class="form-control" rows="4" name="comments" placeholder="Any Comments?"></textarea>
                                 </div>
@@ -1547,14 +1359,22 @@ if (isset($_POST['add_telemetry'])) {
                                 <p>A few <a href="https://docs.itflow.org/installation#post-installation_essential_housekeeping">housekeeping steps</a> are required to ensure everything runs smoothly, namely:</p>
                                 <ul>
                                     <li><a href="https://docs.itflow.org/backups">Setup backups</a></li>
-                                    <li><a href="https://docs.itflow.org/cron">Setup cron</a> *If Installing via script cron jobs will be automatically setup for you.</li>
+                                    <li>
+                                        <a href="https://docs.itflow.org/cron">Setup cron</a> - ITFlow needs one entry, which runs
+                                        every job on the schedule set in Maintenance &gt; Cron. Add it to the crontab of the user that
+                                        owns the ITFlow files:
+                                        <pre class="bg-dark text-white p-2 mt-2"><?= escapeHtml("* * * * * php " . dirname(__DIR__) . "/cron/cron.php >/dev/null") ?></pre>
+                                        Then <strong>turn cron on</strong> in Maintenance &gt; Cron - it ships off, and every job
+                                        stops itself until it is enabled.
+                                        *If installing via the script the crontab entry is set up for you.
+                                    </li>
                                     <li>Star ITFlow on <a href="https://github.com/itflow-org/itflow">Github</a> :)</li>
                                 </ul>
 
                                 <hr>
 
                                 <button type="submit" name="add_telemetry" class="btn btn-primary text-bold">
-                                    Finish and Sign in<i class="fas fa-fw fa-check-circle ml-2"></i>
+                                    Finish and Sign in<i class="fas fa-fw fa-check-circle ms-2"></i>
                                 </button>
 
                             </form>
@@ -1566,7 +1386,7 @@ if (isset($_POST['add_telemetry'])) {
 
                     <div class="card card-dark">
                         <div class="card-header">
-                            <h3 class="card-title"><i class="fas fa-fw fa-cube mr-2"></i>ITFlow Setup</h3>
+                            <h3 class="card-title"><i class="fas fa-fw fa-cube me-2"></i>ITFlow Setup</h3>
                         </div>
                         <div class="card-body">
                             <h2><b>Thank you</b> for choosing to try ITFlow!</h2>
@@ -1575,9 +1395,13 @@ if (isset($_POST['add_telemetry'])) {
                             <ul>
                                 <li>Please take a look over the install <a href="https://docs.itflow.org/installation">docs</a>, if you haven't already</li>
                                 <li>Don't hesitate to reach out on the <a href="https://forum.itflow.org/t/support" target="_blank">forums</a> if you need any assistance</li>
-                                <li><i>Apache/PHP Error log: <?php echo $errorLog ?></i></li>
+                                <li><i>Apache/PHP Error log: <?= $errorLog ?></i></li>
                             </ul>
-                            <br><p>A database must be created before proceeding - click on the button below to get started.</p>
+                            <?php if ($install_is_live): ?>
+                                <br><p>This install was left part-way through setup - click on the button below to pick up where it stopped.</p>
+                            <?php else: ?>
+                                <br><p>A database must be created before proceeding - click on the button below to get started.</p>
+                            <?php endif; ?>
                             <br><hr>
                             <p class="text-muted">ITFlow is <b>free software</b>: you can redistribute and/or modify it under the terms of the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html" target="_blank">GNU General Public License</a>. <br> It is distributed in the hope that it will be useful, but <b>without any warranty</b>; without even the implied warranty of merchantability or fitness for a particular purpose.</p>
                             <?php
@@ -1588,21 +1412,25 @@ if (isset($_POST['add_telemetry'])) {
                             ?>
                             <hr>
                             <div class="text-center">
-                                <?php if ($should_skip_to_user): ?>
-                                    <a href="?user" class="btn btn-primary text-bold mr-2">
-                                        Create First User <i class="fas fa-fw fa-user ml-2"></i>
+                                <?php if ($install_is_live): ?>
+                                    <a href="?<?= $resume_step ?>" class="btn btn-primary text-bold me-2">
+                                        Continue Setup <i class="fas fa-fw fa-arrow-alt-circle-right ms-2"></i>
+                                    </a>
+                                <?php elseif ($should_skip_to_user): ?>
+                                    <a href="?user" class="btn btn-primary text-bold me-2">
+                                        Create First User <i class="fas fa-fw fa-user ms-2"></i>
                                     </a>
                                 <?php endif; ?>
 
                                 <?php if ($can_show_restore): ?>
                                     <a href="?restore" class="btn btn-warning text-bold">
-                                        Restore from Backup <i class="fas fa-fw fa-upload ml-2"></i>
+                                        Restore from Backup <i class="fas fa-fw fa-upload ms-2"></i>
                                     </a>
                                 <?php endif; ?>
 
                                 <?php if (!$should_skip_to_user && !$can_show_restore): ?>
                                     <a href="?checks" class="btn btn-primary text-bold">
-                                        Begin Setup <i class="fas fa-fw fa-arrow-alt-circle-right ml-2"></i>
+                                        Begin Setup <i class="fas fa-fw fa-arrow-alt-circle-right ms-2"></i>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -1613,23 +1441,22 @@ if (isset($_POST['add_telemetry'])) {
 
             </div><!-- /.container-fluid -->
         </div>
-        <!-- /.content -->
-    </div>
-    <!-- /.content-wrapper -->
+        <!-- /.app-content -->
+    </main>
+    <!-- /.app-main -->
 </div>
-<!-- ./wrapper -->
+<!-- /.app-wrapper -->
 
 <!-- REQUIRED SCRIPTS -->
 
 <!-- jQuery -->
-<script src="/plugins/jquery/jquery.min.js"></script>
-<!-- Bootstrap 4 -->
-<script src="/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+<!-- Bootstrap 5 -->
 <!-- Custom js-->
-<script src='/plugins/select2/js/select2.min.js'></script>
-<script src="/plugins/Show-Hide-Passwords-Bootstrap-4/bootstrap-show-password.min.js"></script>
+<script src='/libs/tom-select/js/tom-select.complete.min.js'></script>
+<script src="/js/tom_select.js"></script>
+<script src="/libs/bootstrap/js/bootstrap.bundle.min.js"></script>
 <!-- AdminLTE App -->
-<script src="/plugins/adminlte/js/adminlte.min.js"></script>
+<script src="/libs/adminlte/js/adminlte.min.js"></script>
 
 <!-- Custom js-->
 <script src="/js/app.js"></script>

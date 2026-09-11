@@ -10,17 +10,17 @@
  *   invoice_id     required* - Return items for a single invoice
  *   item_id        required* - Return a single line item by its own ID
  *                  * One of invoice_id or item_id must be provided
+ *   client_id      optional  - Only return items on invoices for this client
  *   limit          optional  - Max rows to return (default 50)
  *   offset         optional  - Offset for pagination (default 0)
  *
  * Security:
  *   - invoice_items are always joined to invoices so that invoice_client_id
- *     is checked against the API key's client scope. A scoped key can never
+ *     is checked against the key user's client scope. A restricted key can never
  *     read items belonging to another client, even when item_id is supplied
  *     directly.
- *   - $client_id is set to "%" by validate_api_key.php for All-Clients keys,
- *     which causes the LIKE to match every client — consistent with other
- *     endpoints in this API.
+ *   - An optional client_id narrows the result further, within that scope. It is
+ *     a filter, not a grant - it can never widen what the key can see.
  */
 require_once '../validate_api_key.php';
 require_once '../require_get_method.php';
@@ -33,7 +33,7 @@ if (isset($_GET['item_id'])) {
          FROM invoice_items ii
          INNER JOIN invoices i ON i.invoice_id = ii.item_invoice_id
          WHERE ii.item_id = '$item_id'
-           AND i.invoice_client_id LIKE '$client_id'
+           AND 1=1 " . apiClientScopeSql('i.invoice_client_id') . "
          LIMIT 1"
     );
 } elseif (isset($_GET['invoice_id'])) {
@@ -44,7 +44,7 @@ if (isset($_GET['item_id'])) {
          FROM invoice_items ii
          INNER JOIN invoices i ON i.invoice_id = ii.item_invoice_id
          WHERE ii.item_invoice_id = '$invoice_id'
-           AND i.invoice_client_id LIKE '$client_id'
+           AND 1=1 " . apiClientScopeSql('i.invoice_client_id') . "
          ORDER BY ii.item_order ASC, ii.item_id ASC
          LIMIT $limit OFFSET $offset"
     );

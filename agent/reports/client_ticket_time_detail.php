@@ -122,15 +122,15 @@ $result = $stmt->get_result();
 <div class="card">
     <div class="card-header bg-dark py-2">
         <h3 class="card-title mt-2">
-            <i class="fas fa-fw fa-life-ring mr-2"></i>
-            Client Time Detail Audit Report (<?php echo nullable_htmlentities($from); ?> to <?php echo nullable_htmlentities($to); ?>)
+            <i class="fas fa-fw fa-life-ring me-2"></i>
+            Client Time Detail Audit Report (<?= escapeHtml($from) ?> to <?= escapeHtml($to) ?>)
             <?php if ($billable_only) { ?>
-                <span class="badge badge-success ml-2">Billable Only</span>
+                <span class="badge bg-success ms-2">Billable Only</span>
             <?php } ?>
         </h3>
         <div class="card-tools">
             <button type="button" class="btn btn-primary d-print-none" onclick="window.print();">
-                <i class="fas fa-fw fa-print mr-2"></i>Print
+                <i class="fas fa-fw fa-print me-2"></i>Print
             </button>
         </div>
     </div>
@@ -141,40 +141,40 @@ $result = $stmt->get_result();
             <div class="row">
                 <div class="col-md-3 mb-2">
                     <label class="mb-1">From</label>
-                    <input type="date" class="form-control" name="from" value="<?php echo nullable_htmlentities($from); ?>">
+                    <input type="date" class="form-control" name="from" value="<?= escapeHtml($from) ?>">
                 </div>
 
                 <div class="col-md-3 mb-2">
                     <label class="mb-1">To</label>
-                    <input type="date" class="form-control" name="to" value="<?php echo nullable_htmlentities($to); ?>">
+                    <input type="date" class="form-control" name="to" value="<?= escapeHtml($to) ?>">
                 </div>
 
                 <div class="col-md-3 mb-2">
                     <label class="mb-1">Billing time increment</label>
-                    <select class="form-control" name="billing_increment">
-                        <option value="0.1"  <?php echo ($billing_increment_key === '0.1')  ? 'selected' : ''; ?>>0.1 hour (6 minutes)</option>
-                        <option value="0.25" <?php echo ($billing_increment_key === '0.25') ? 'selected' : ''; ?>>0.25 hour (15 minutes)</option>
-                        <option value="0.5"  <?php echo ($billing_increment_key === '0.5')  ? 'selected' : ''; ?>>0.5 hour (30 minutes)</option>
+                    <select class="form-select" name="billing_increment">
+                        <option value="0.1"  <?= ($billing_increment_key === '0.1')  ? 'selected' : '' ?>>0.1 hour (6 minutes)</option>
+                        <option value="0.25" <?= ($billing_increment_key === '0.25') ? 'selected' : '' ?>>0.25 hour (15 minutes)</option>
+                        <option value="0.5"  <?= ($billing_increment_key === '0.5')  ? 'selected' : '' ?>>0.5 hour (30 minutes)</option>
                     </select>
                 </div>
 
-                <div class="col-md-2 mb-2 d-flex align-items-end ml-auto">
-                    <button type="submit" class="btn btn-success btn-block">
-                        <i class="fas fa-fw fa-filter mr-1"></i>Apply
+                <div class="col-md-2 mb-2 d-flex align-items-end ms-auto">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-fw fa-filter me-1"></i>Apply
                     </button>
                 </div>
 
                 <div class="col-md-4 mb-2 d-flex align-items-end">
-                    <div class="custom-control custom-checkbox">
+                    <div class="form-check">
                         <input
                             type="checkbox"
-                            class="custom-control-input"
+                            class="form-check-input"
                             id="billable_only"
                             name="billable_only"
                             value="1"
                             <?php if ($billable_only) echo 'checked'; ?>
                         >
-                        <label class="custom-control-label" for="billable_only">Billable tickets only</label>
+                        <label class="form-check-label" for="billable_only">Billable tickets only</label>
                     </div>
                 </div>
 
@@ -190,8 +190,8 @@ $result = $stmt->get_result();
             <thead class="bg-dark">
             <tr>
                 <th>Ticket / Replies with Time</th>
-                <th class="text-right" style="width: 150px;">Time Worked</th>
-                <th class="text-right" style="width: 120px;">Billable (hrs)</th>
+                <th class="text-end" style="width: 150px;">Time Worked</th>
+                <th class="text-end" style="width: 120px;">Billable (hrs)</th>
             </tr>
             </thead>
 
@@ -201,10 +201,10 @@ $result = $stmt->get_result();
             $printTicketSubtotalRow = function($ticket_label_html, $ticket_seconds, $ticket_billable_seconds) {
                 $ticket_billed = secondsToDecimalHours($ticket_billable_seconds);
                 ?>
-                <tr class="font-weight-bold">
-                    <td class="text-right pr-3">Ticket Total for <?php echo $ticket_label_html; ?></td>
-                    <td class="text-right"><?php echo formatDuration(secondsToHmsString($ticket_seconds)); ?></td>
-                    <td class="text-right"><?php echo number_format($ticket_billed, 2); ?></td>
+                <tr class="fw-bold">
+                    <td class="text-end pe-3">Ticket Total for <?= $ticket_label_html ?></td>
+                    <td class="text-end"><?= formatDuration(secondsToHmsString($ticket_seconds)) ?></td>
+                    <td class="text-end"><?= number_format($ticket_billed, 2) ?></td>
                 </tr>
                 <?php
                 return $ticket_billed;
@@ -235,12 +235,12 @@ $result = $stmt->get_result();
                 $had_rows = true;
 
                 $client_id = (int)$r['client_id'];
-                $client_name_html = nullable_htmlentities($r['client_name']);
+                $client_name_html = escapeHtml($r['client_name']);
 
                 $ticket_id = (int)$r['ticket_id'];
-                $ticket_prefix = nullable_htmlentities($r['ticket_prefix']);
+                $ticket_prefix = escapeHtml($r['ticket_prefix']);
                 $ticket_number = (int)$r['ticket_number'];
-                $ticket_subject_html = nullable_htmlentities($r['ticket_subject']);
+                $ticket_subject_html = escapeHtml($r['ticket_subject']);
 
                 $reply_created_at = $r['ticket_reply_created_at'];
                 $reply_seconds = (int)$r['reply_time_seconds'];
@@ -254,7 +254,7 @@ $result = $stmt->get_result();
                 $reply_content_clean = strip_tags($reply_content_raw);
                 $reply_content_clean = str_replace(["\r\n", "\r"], "\n", $reply_content_clean);
                 $reply_content_clean = preg_replace("/\n{3,}/", "\n\n", $reply_content_clean);
-                $reply_content_html = nl2br(nullable_htmlentities(trim($reply_content_clean)));
+                $reply_content_html = nl2br(escapeHtml(trim($reply_content_clean)));
 
                 // Close out previous client if client changed
                 if ($current_client_id !== null && $client_id !== $current_client_id) {
@@ -273,12 +273,12 @@ $result = $stmt->get_result();
 
                     // Client subtotal (billable based on sum of rounded replies across all tickets)
                     ?>
-                    <tr class="font-weight-bold">
-                        <td class="text-right">
-                            Total for <?php echo $current_client_name; ?> (<?php echo $client_ticket_count; ?> tickets)
+                    <tr class="fw-bold">
+                        <td class="text-end">
+                            Total for <?= $current_client_name ?> (<?= $client_ticket_count ?> tickets)
                         </td>
-                        <td class="text-right"><?php echo formatDuration(secondsToHmsString($client_time_seconds)); ?></td>
-                        <td class="text-right"><?php echo number_format(secondsToDecimalHours($client_billable_seconds), 2); ?></td>
+                        <td class="text-end"><?= formatDuration(secondsToHmsString($client_time_seconds)) ?></td>
+                        <td class="text-end"><?= number_format(secondsToDecimalHours($client_billable_seconds), 2) ?></td>
                     </tr>
                     <tr><td colspan="3"></td></tr>
                     <?php
@@ -295,7 +295,7 @@ $result = $stmt->get_result();
                     $current_client_name = $client_name_html;
                     ?>
                     <tr class="table-active">
-                        <td colspan="3" class="font-weight-bold"><?php echo $client_name_html; ?></td>
+                        <td colspan="3" class="fw-bold"><?= $client_name_html ?></td>
                     </tr>
                     <?php
                 }
@@ -303,7 +303,7 @@ $result = $stmt->get_result();
                 // Ticket label
                 $display_ticket = trim($ticket_prefix . $ticket_number);
                 if ($display_ticket === '') $display_ticket = (string)$ticket_number;
-                $ticket_label_html = nullable_htmlentities($display_ticket) . " - " . $ticket_subject_html;
+                $ticket_label_html = escapeHtml($display_ticket) . " - " . $ticket_subject_html;
 
                 // Ticket changed: close previous ticket subtotal
                 if ($current_ticket_id !== null && $ticket_id !== $current_ticket_id) {
@@ -328,9 +328,9 @@ $result = $stmt->get_result();
 
                     ?>
                     <tr>
-                        <td class="font-weight-bold"><?php echo $ticket_label_html; ?></td>
-                        <td class="text-right text-muted"></td>
-                        <td class="text-right text-muted"></td>
+                        <td class="fw-bold"><?= $ticket_label_html ?></td>
+                        <td class="text-end text-muted"></td>
+                        <td class="text-end text-muted"></td>
                     </tr>
                     <?php
                 }
@@ -338,15 +338,15 @@ $result = $stmt->get_result();
                 // Reply row (indented)
                 ?>
                 <tr>
-                    <td class="pl-4 text-muted">
-                        <i class="far fa-clock mr-1"></i>
-                        <?php echo nullable_htmlentities(date('Y-m-d g:i A', strtotime($reply_created_at))); ?>
+                    <td class="ps-4 text-muted">
+                        <i class="far fa-clock me-1"></i>
+                        <?= escapeHtml(date('Y-m-d g:i A', strtotime($reply_created_at))) ?>
                         <div class="mt-1 text-body" style="white-space: normal;">
-                            <?php echo $reply_content_html; ?>
+                            <?= $reply_content_html ?>
                         </div>
                     </td>
-                    <td class="text-right"><?php echo formatDuration($reply_hms); ?></td>
-                    <td class="text-right"><?php echo number_format(secondsToDecimalHours($reply_billable_seconds), 2); ?></td>
+                    <td class="text-end"><?= formatDuration($reply_hms) ?></td>
+                    <td class="text-end"><?= number_format(secondsToDecimalHours($reply_billable_seconds), 2) ?></td>
                 </tr>
                 <?php
 
@@ -378,23 +378,23 @@ $result = $stmt->get_result();
 
                 // Close last client subtotal
                 ?>
-                <tr class="font-weight-bold">
-                    <td class="text-right">
-                        Total for <?php echo $current_client_name; ?> (<?php echo $client_ticket_count; ?> tickets)
+                <tr class="fw-bold">
+                    <td class="text-end">
+                        Total for <?= $current_client_name ?> (<?= $client_ticket_count ?> tickets)
                     </td>
-                    <td class="text-right"><?php echo formatDuration(secondsToHmsString($client_time_seconds)); ?></td>
-                    <td class="text-right"><?php echo number_format(secondsToDecimalHours($client_billable_seconds), 2); ?></td>
+                    <td class="text-end"><?= formatDuration(secondsToHmsString($client_time_seconds)) ?></td>
+                    <td class="text-end"><?= number_format(secondsToDecimalHours($client_billable_seconds), 2) ?></td>
                 </tr>
 
                 <tr><td colspan="3"></td></tr>
 
                 <!-- Grand totals -->
-                <tr class="font-weight-bold">
-                    <td class="text-right">
-                        Grand Total (<?php echo $grand_ticket_count; ?> tickets)
+                <tr class="fw-bold">
+                    <td class="text-end">
+                        Grand Total (<?= $grand_ticket_count ?> tickets)
                     </td>
-                    <td class="text-right"><?php echo formatDuration(secondsToHmsString($grand_time_seconds)); ?></td>
-                    <td class="text-right"><?php echo number_format(secondsToDecimalHours($grand_billable_seconds), 2); ?></td>
+                    <td class="text-end"><?= formatDuration(secondsToHmsString($grand_time_seconds)) ?></td>
+                    <td class="text-end"><?= number_format(secondsToDecimalHours($grand_billable_seconds), 2) ?></td>
                 </tr>
                 <?php
             }
@@ -404,7 +404,7 @@ $result = $stmt->get_result();
 
         <small class="text-muted p-2">
             This report shows only ticket replies with time worked within the selected date range.
-            “Billable (hrs)” is calculated by rounding each reply up to the nearest <?php echo (int)$billing_increment_minutes; ?> minutes (<?php echo nullable_htmlentities($billing_increment_key); ?> hours),
+            “Billable (hrs)” is calculated by rounding each reply up to the nearest <?= (int)$billing_increment_minutes ?> minutes (<?= escapeHtml($billing_increment_key) ?> hours),
             then summing those rounded values for ticket/client/grand totals.
             <br>
             Reply content is displayed under each reply timestamp.

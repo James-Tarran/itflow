@@ -16,6 +16,7 @@ $passwords_not_rotated_sql = mysqli_query($mysqli,
         FROM credentials
         LEFT JOIN clients ON credential_client_id = client_id
         WHERE DATE(credential_password_changed_at) < DATE_SUB(CURDATE(), INTERVAL $days DAY)
+        " . clientScopeSql('credential_client_id') . "
         ORDER BY client_name"
 );
 
@@ -23,9 +24,9 @@ $passwords_not_rotated_sql = mysqli_query($mysqli,
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring mr-2"></i>Client credentials not changed/rotated in the last 90 days</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring me-2"></i>Client credentials not changed/rotated in the last 90 days</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body">
@@ -35,9 +36,9 @@ $passwords_not_rotated_sql = mysqli_query($mysqli,
                     <thead>
                     <tr>
                         <th>Client</th>
-                        <th class="text-right">Credential Name</th>
-                        <th class="text-right">Credential Description</th>
-                        <th class="text-right">Credential Password Last Changed</th>
+                        <th class="text-end">Credential Name</th>
+                        <th class="text-end">Credential Description</th>
+                        <th class="text-end">Credential Password Last Changed</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -47,19 +48,19 @@ $passwords_not_rotated_sql = mysqli_query($mysqli,
                     while ($row = mysqli_fetch_assoc($passwords_not_rotated_sql)) {
 
                         $credential_id = intval($row['credential_id']);
-                        $credential_name = nullable_htmlentities($row['credential_name']);
-                        $credential_description = nullable_htmlentities($row['credential_description']);
-                        $credential_password_changed = nullable_htmlentities($row['credential_password_changed_at']);
+                        $credential_name = escapeHtml($row['credential_name']);
+                        $credential_description = escapeHtml($row['credential_description']);
+                        $credential_password_changed = escapeHtml($row['credential_password_changed_at']);
                         $client_id = intval($row['client_id']);
-                        $client_name = nullable_htmlentities($row['client_name']);
+                        $client_name = escapeHtml($row['client_name']);
 
                         ?>
 
                         <tr>
-                            <td><?php echo $client_name; ?></td>
-                            <td class="text-right"><?php echo $credential_name; ?></td>
-                            <td class="text-right"><?php echo $credential_description; ?></td>
-                            <td class="text-right"><?php echo timeAgo($credential_password_changed) . " (" . $credential_password_changed . ")" ?></td>
+                            <td><?= $client_name ?></td>
+                            <td class="text-end"><?= $credential_name ?></td>
+                            <td class="text-end"><?= $credential_description ?></td>
+                            <td class="text-end"><?= timeAgo($credential_password_changed) . " (" . $credential_password_changed . ")" ?></td>
                         </tr>
 
                     <?php } ?>

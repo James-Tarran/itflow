@@ -9,6 +9,7 @@
  *   year (optional) - Filter by year (default: current year)
  *   month (optional) - Filter by month 1-12 (default: current month)
  *   technician_id (optional) - Filter by specific technician user ID
+ *   client_id (optional) - Only count time on tickets for this client
  *   limit (optional) - Number of results to return (default: 50)
  *   offset (optional) - Offset for pagination (default: 0)
  */
@@ -62,7 +63,7 @@ $sql = mysqli_query(
     WHERE tr.ticket_reply_time_worked IS NOT NULL
         AND tr.ticket_reply_time_worked != '00:00:00'
         AND $date_conditions
-        AND t.ticket_client_id LIKE '$client_id'
+        AND 1=1 " . apiClientScopeSql('t.ticket_client_id') . "
         $technician_condition
     GROUP BY t.ticket_id, u.user_id
     ORDER BY c.client_name ASC, t.ticket_number ASC, u.user_name ASC

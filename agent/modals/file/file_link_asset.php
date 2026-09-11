@@ -1,37 +1,33 @@
-<div class="modal" id="linkAssetToFileModal<?php echo $file_id; ?>" tabindex="-1">
+<div class="modal" id="linkAssetToFileModal<?= $file_id ?>" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-dark">
-                <h5 class="modal-title"><i class="fa fa-fw fa-desktop mr-2"></i>Link Asset to <strong><?php echo $file_name; ?></strong></h5>
-                <button type="button" class="close text-white" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
+                <h5 class="modal-title"><i class="fa fa-fw fa-desktop me-2"></i>Link Asset to <strong><?= $file_name ?></strong></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form action="post.php" method="post" autocomplete="off">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                <input type="hidden" name="file_id" value="<?php echo $file_id; ?>">
+                <input type="hidden" name="file_id" value="<?= $file_id ?>">
                 <div class="modal-body">
 
-                    <div class="form-group">
+                    <div class="mb-3">
                         <div class="input-group">
-                            <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-desktop"></i></span>
-                            </div>
-                            <select class="form-control select2" name="asset_id">
+                            <select class="form-select select2" name="asset_id">
                                 <option value="">- Select an Asset -</option>
                                 <?php
 
-                                $sql_assets_select = mysqli_query($mysqli, "SELECT * FROM assets
+                                $sql_assets_select = mysqli_query($mysqli, "SELECT asset_id, asset_name FROM assets
                                     WHERE asset_client_id = $client_id
                                     AND asset_archived_at IS NULL
                                     ORDER BY asset_name ASC"
                                 );
                                 while ($row = mysqli_fetch_assoc($sql_assets_select)) {
                                     $asset_id = intval($row['asset_id']);
-                                    $asset_name = nullable_htmlentities($row['asset_name']);
+                                    $asset_name = escapeHtml($row['asset_name']);
 
                                     ?>
-                                    <option value="<?php echo $asset_id ?>"><?php echo $asset_name; ?></option>
+                                    <option value="<?= $asset_id ?>"><?= $asset_name ?></option>
                                     <?php
                                 }
                                 ?>
@@ -40,7 +36,7 @@
                         </div>
                     </div>
                         <?php
-                            $sql_assets = mysqli_query($mysqli, "SELECT * FROM assets, asset_files
+                            $sql_assets = mysqli_query($mysqli, "SELECT assets.asset_id, asset_name FROM assets, asset_files
                                 WHERE assets.asset_id = asset_files.asset_id
                                 AND asset_files.file_id = $file_id
                                 ORDER BY asset_name ASC"
@@ -50,14 +46,14 @@
 
                             while ($row = mysqli_fetch_assoc($sql_assets)) {
                                 $asset_id = intval($row['asset_id']);
-                                $asset_name = nullable_htmlentities($row['asset_name']);
+                                $asset_name = escapeHtml($row['asset_name']);
 
                                 $linked_assets[] = $asset_id;
 
                         ?>
-                                <div class="ml-2">
-                                    <a href="asset_details.php?client_id=<?php echo $client_id; ?>&asset_id=<?php echo $asset_id; ?>" target="_blank"><?php echo $asset_name; ?></a>
-                                    <a class="confirm-link float-right" href="post.php?unlink_asset_from_file&asset_id=<?php echo $asset_id; ?>&file_id=<?php echo $file_id; ?>">
+                                <div class="ms-2">
+                                    <a href="asset.php?client_id=<?= $client_id ?>&asset_id=<?= $asset_id ?>" target="_blank"><?= $asset_name ?></a>
+                                    <a class="confirm-link float-end" href="post.php?unlink_asset_from_file&asset_id=<?= $asset_id ?>&file_id=<?= $file_id ?>">
                                         <i class="fas fa-fw fa-trash-alt text-secondary"></i>
                                     </a>
                                 </div>
@@ -67,8 +63,8 @@
 
                 </div>
                 <div class="modal-footer">
-                    <button type="submit" name="link_asset_to_file" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Link</button>
-                    <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+                    <button type="submit" name="link_asset_to_file" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Link</button>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
                 </div>
             </form>
         </div>

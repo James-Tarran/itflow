@@ -27,50 +27,45 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
         <form action="post.php" method="post">
             <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label>Subject <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-tag"></i></span>
-                    </div>
                     <input type="text" class="form-control" name="subject" placeholder="Subject" required>
                 </div>
             </div>
 
             <div class="row">
                 <div class="col">
-                    <div class="form-group">
+                    <div class="mb-3">
                         <label>Priority <strong class="text-danger">*</strong></label>
                         <div class="input-group">
-                            <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="fa fa-fw fa-thermometer-half"></i></span>
-                            </div>
-                            <select class="form-control select2" name="priority" required>
+                            <select class="form-select select2" name="priority" required>
                                 <option>Low</option>
-                                <option>Medium</option>
+                                <option selected>Medium</option>
                                 <option>High</option>
+                                <option>Urgent</option>
                             </select>
                         </div>
                     </div>
                 </div>
 
                 <div class="col">
-                    <div class="form-group">
+                    <div class="mb-3">
                     <label>Category</label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-layer-group"></i></span>
-                        </div>
-                        <select class="form-control select2" name="category">
+                        <select class="form-select select2" name="category">
                             <option value="0">- No Category -</option>
                             <?php
                             $sql_categories = mysqli_query($mysqli, "SELECT category_id, category_name FROM categories WHERE category_type = 'Ticket' AND category_archived_at IS NULL");
                             while ($row = mysqli_fetch_assoc($sql_categories)) {
                                 $category_id = intval($row['category_id']);
-                                $category_name = nullable_htmlentities($row['category_name']);
+                                $category_name = escapeHtml($row['category_name']);
 
                                 ?>
-                                <option value="<?php echo $category_id; ?>"><?php echo $category_name; ?></option>
+                                <option value="<?= $category_id ?>"><?= $category_name ?></option>
                             <?php } ?>
 
                         </select>
@@ -80,22 +75,20 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
             </div>
 
             <?php if (mysqli_num_rows($sql_assets) > 0) { ?>
-                <div class="form-group">
+                <div class="mb-3">
                     <label>Asset</label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-desktop"></i></span>
-                        </div>
-                        <select class="form-control select2" name="asset">
+                        <select class="form-select select2" name="asset">
                             <option value="0">- None -</option>
                             <?php
 
                             while ($row = mysqli_fetch_assoc($sql_assets)) {
                                 $asset_id = intval($row['asset_id']);
-                                $asset_name = sanitizeInput($row['asset_name']);
-                                $asset_type = sanitizeInput($row['asset_type']);
+                                $asset_name = escapeSql($row['asset_name']);
+                                $asset_type = escapeSql($row['asset_type']);
                                 ?>
-                                <option value="<?php echo $asset_id ?>"><?php echo "$asset_name ($asset_type)"; ?></option>
+                                <option value="<?= $asset_id ?>"><?= "$asset_name ($asset_type)" ?></option>
                                 <?php
                             }
                             ?>
@@ -105,7 +98,7 @@ $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, asset_type FRO
             <?php } ?>
 
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label>Details <strong class="text-danger">*</strong></label>
                 <textarea class="form-control tinymce" name="details"></textarea>
             </div>

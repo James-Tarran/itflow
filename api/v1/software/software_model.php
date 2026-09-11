@@ -3,7 +3,7 @@
 // Variable assignment from POST (or: blank/from DB if updating)
 
 if (isset($_POST['software_name'])) {
-    $name = sanitizeInput($_POST['software_name']);
+    $name = escapeSql($_POST['software_name']);
 } elseif ($software_row) {
     $name = mysqli_real_escape_string($mysqli, $software_row['software_name']);
 } else {
@@ -11,7 +11,7 @@ if (isset($_POST['software_name'])) {
 }
 
 if (isset($_POST['software_description'])) {
-    $description = sanitizeInput($_POST['software_description']);
+    $description = escapeSql($_POST['software_description']);
 } elseif ($software_row) {
     $description = mysqli_real_escape_string($mysqli, $software_row['software_description']);
 } else {
@@ -19,7 +19,7 @@ if (isset($_POST['software_description'])) {
 }
 
 if (isset($_POST['software_version'])) {
-    $version = sanitizeInput($_POST['software_version']);
+    $version = escapeSql($_POST['software_version']);
 } elseif ($software_row) {
     $version = mysqli_real_escape_string($mysqli, $software_row['software_version']);
 } else {
@@ -27,7 +27,7 @@ if (isset($_POST['software_version'])) {
 }
 
 if (isset($_POST['software_type'])) {
-    $type = sanitizeInput($_POST['software_type']);
+    $type = escapeSql($_POST['software_type']);
 } elseif ($software_row) {
     $type = mysqli_real_escape_string($mysqli, $software_row['software_type']);
 } else {
@@ -35,7 +35,7 @@ if (isset($_POST['software_type'])) {
 }
 
 if (isset($_POST['software_license_type'])) {
-    $license_type = sanitizeInput($_POST['software_license_type']);
+    $license_type = escapeSql($_POST['software_license_type']);
 } elseif ($software_row) {
     $license_type = mysqli_real_escape_string($mysqli, $software_row['software_license_type']);
 } else {
@@ -43,7 +43,7 @@ if (isset($_POST['software_license_type'])) {
 }
 
 if (isset($_POST['software_key'])) {
-    $key = sanitizeInput($_POST['software_key']);
+    $key = escapeSql($_POST['software_key']);
 } elseif ($software_row) {
     $key = mysqli_real_escape_string($mysqli, $software_row['software_key']);
 } else {
@@ -59,7 +59,7 @@ if (isset($_POST['software_seats'])) {
 }
 
 if (isset($_POST['software_purchase_reference'])) {
-    $purchase_reference = sanitizeInput($_POST['software_purchase_reference']);
+    $purchase_reference = escapeSql($_POST['software_purchase_reference']);
 } elseif ($software_row) {
     $purchase_reference = mysqli_real_escape_string($mysqli, $software_row['software_purchase_reference']);
 } else {
@@ -67,7 +67,7 @@ if (isset($_POST['software_purchase_reference'])) {
 }
 
 if (isset($_POST['software_purchase'])) {
-    $purchase = sanitizeInput($_POST['software_purchase']);
+    $purchase = escapeSql($_POST['software_purchase']);
 } elseif ($software_row) {
     $purchase = $software_row['software_purchase'];
 } else {
@@ -75,7 +75,7 @@ if (isset($_POST['software_purchase'])) {
 }
 
 if (isset($_POST['software_expire'])) {
-    $expire = sanitizeInput($_POST['software_expire']);
+    $expire = escapeSql($_POST['software_expire']);
 } elseif ($software_row) {
     $expire = $software_row['software_expire'];
 } else {
@@ -83,7 +83,7 @@ if (isset($_POST['software_expire'])) {
 }
 
 if (isset($_POST['software_notes'])) {
-    $notes = sanitizeInput($_POST['software_notes']);
+    $notes = escapeSql($_POST['software_notes']);
 } elseif ($software_row) {
     $notes = mysqli_real_escape_string($mysqli, $software_row['software_notes']);
 } else {

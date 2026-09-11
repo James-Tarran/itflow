@@ -15,7 +15,7 @@ $insert_id = false;
 if (!empty($name) && !empty($email) && !empty($client_id)) {
 
     // Check contact with $email doesn't already exist
-    $email_duplication_sql = mysqli_query($mysqli, "SELECT * FROM contacts WHERE contact_email = '$email' AND contact_client_id = '$client_id'");
+    $email_duplication_sql = mysqli_query($mysqli, "SELECT 1 FROM contacts WHERE contact_email = '$email' AND contact_client_id = '$client_id'");
 
     if (mysqli_num_rows($email_duplication_sql) == 0) {
 
@@ -32,8 +32,8 @@ if (!empty($name) && !empty($email) && !empty($client_id)) {
             $insert_id = mysqli_insert_id($mysqli);
             
             // Logging
-            logAction("Contact", "Create", "$name via API ($api_key_name)", $client_id, $insert_id);
-            logAction("API", "Success", "Created contact $name via API ($api_key_name)", $client_id);
+            logAudit("Contact", "Create", "$name via API ($api_key_name)", $client_id, $insert_id);
+            logAudit("API", "Success", "Created contact $name via API ($api_key_name)", $client_id);
         }
 
     }

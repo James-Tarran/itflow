@@ -33,8 +33,8 @@ if (!empty($contact_id) && !empty($software_id)) {
     if ($software_row && $contact_row && $software_client_id === $contact_client_id
         && ($client_id == 0 || $software_client_id == $client_id)) {
 
-        $software_name = sanitizeInput($software_row['software_name']);
-        $contact_name = sanitizeInput($contact_row['contact_name']);
+        $software_name = escapeSql($software_row['software_name']);
+        $contact_name = escapeSql($contact_row['contact_name']);
 
         // INSERT IGNORE: (software_id, contact_id) is the primary key, so re-linking an
         // already-linked pair (e.g. a repeated daily sync) is a no-op, not an error.
@@ -43,8 +43,8 @@ if (!empty($contact_id) && !empty($software_id)) {
         if ($link_sql) {
             $update_count = 1;
 
-            logAction("Software", "Link", "$software_name linked to contact $contact_name via API ($api_key_name)", $software_client_id, $software_id);
-            logAction("API", "Success", "Linked software $software_name to contact $contact_name via API ($api_key_name)", $software_client_id);
+            logAudit("Software", "Link", "$software_name linked to contact $contact_name via API ($api_key_name)", $software_client_id, $software_id);
+            logAudit("API", "Success", "Linked software $software_name to contact $contact_name via API ($api_key_name)", $software_client_id);
         }
     }
 }

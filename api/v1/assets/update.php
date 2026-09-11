@@ -21,7 +21,7 @@ if (!empty($asset_id)) {
     $update_sql = mysqli_query($mysqli, "UPDATE assets SET asset_name = '$name', asset_description = '$description', asset_type = '$type', asset_make = '$make', asset_model = '$model', asset_serial = '$serial', asset_os = '$os', asset_uri = '$uri', asset_uri_2 = '$uri_2', asset_status = '$status', asset_location_id = $location, asset_vendor_id = $vendor, asset_contact_id = $contact, asset_purchase_date = $purchase_date, asset_warranty_expire = $warranty_expire, asset_install_date = $install_date, asset_notes = '$notes' WHERE asset_id = $asset_id AND asset_client_id = $client_id LIMIT 1");
 
     // Check insert & get insert ID
-    if ($update_sql) {
+    if ($update_sql && $asset_row) {
         $update_count = mysqli_affected_rows($mysqli);
 
         // Update Primary Interface
@@ -31,8 +31,8 @@ if (!empty($asset_id)) {
         mysqli_query($mysqli,"INSERT INTO asset_history SET asset_history_status = '$status', asset_history_description = 'API updated $name ($api_key_name)', asset_history_asset_id = $asset_id");
 
         // Logging
-        logAction("Asset", "Edit", "$name via API ($api_key_name)", $client_id);
-        logAction("API", "Success", "Edited asset $name via API ($api_key_name)", $client_id);
+        logAudit("Asset", "Edit", "$name via API ($api_key_name)", $client_id);
+        logAudit("API", "Success", "Edited asset $name via API ($api_key_name)", $client_id);
     }
 }
 

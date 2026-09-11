@@ -4,17 +4,17 @@ require_once "../config.php";
 require_once "../functions.php";
 require_once "../includes/check_login.php";
 
-$settings_mail_path = '/admin/settings_mail.php';
+$settings_mail_path = '/admin/settings_mail.php?tab=oauth';
 
 if (!isset($session_is_admin) || !$session_is_admin) {
-    flash_alert("Admin access required.", 'error');
+    flashAlert("Admin access required.", 'error');
     redirect($settings_mail_path);
 }
 
-$state = sanitizeInput($_GET['state'] ?? '');
+$state = escapeSql($_GET['state'] ?? '');
 $code = $_GET['code'] ?? '';
-$error = sanitizeInput($_GET['error'] ?? '');
-$error_description = sanitizeInput($_GET['error_description'] ?? '');
+$error = escapeSql($_GET['error'] ?? '');
+$error_description = escapeSql($_GET['error_description'] ?? '');
 
 $session_state = $_SESSION['mail_oauth_state'] ?? '';
 $session_state_expires = intval($_SESSION['mail_oauth_state_expires_at'] ?? 0);
@@ -28,17 +28,17 @@ if (!empty($error)) {
         $msg .= " ($error_description)";
     }
 
-    flash_alert($msg, 'error');
+    flashAlert($msg, 'error');
     redirect($settings_mail_path);
 }
 
 if (empty($state) || empty($code) || empty($session_state) || !hash_equals($session_state, $state) || time() > $session_state_expires) {
-    flash_alert("Microsoft OAuth callback validation failed. Please try connecting again.", 'error');
+    flashAlert("Microsoft OAuth callback validation failed. Please try connecting again.", 'error');
     redirect($settings_mail_path);
 }
 
 if (empty($config_mail_oauth_client_id) || empty($config_mail_oauth_client_secret) || empty($config_mail_oauth_tenant_id)) {
-    flash_alert("Microsoft OAuth settings are incomplete. Please fill Client ID, Client Secret, and Tenant ID.", 'error');
+    flashAlert("Microsoft OAuth settings are incomplete. Please fill Client ID, Client Secret, and Tenant ID.", 'error');
     redirect($settings_mail_path);
 }
 
@@ -92,13 +92,13 @@ if ($raw_body === false || $http_code < 200 || $http_code >= 300) {
         $reason = $curl_err;
     }
 
-    flash_alert("Microsoft OAuth token exchange failed: " . htmlspecialchars(substr($reason, 0, 500)), 'error');
+    flashAlert("Microsoft OAuth token exchange failed: " . htmlspecialchars(substr($reason, 0, 500)), 'error');
     redirect($settings_mail_path);
 }
 
 $json = json_decode($raw_body, true);
 if (!is_array($json) || empty($json['refresh_token']) || empty($json['access_token'])) {
-    flash_alert("Microsoft OAuth token exchange failed: refresh token or access token missing.", 'error');
+    flashAlert("Microsoft OAuth token exchange failed: refresh token or access token missing.", 'error');
     redirect($settings_mail_path);
 }
 
@@ -153,7 +153,7 @@ mysqli_query($mysqli, "UPDATE settings SET
     WHERE company_id = 1
 ");
 
-logAction("Settings", "Edit", "$session_name completed Microsoft OAuth connect flow for mail settings ($resource)");
+logAudit("Settings", "Edit", "$session_name completed Microsoft OAuth connect flow for mail settings ($resource)");
 
 $success_msg = "Microsoft OAuth connected successfully ($resource). Token expires at $expires_at.";
 
@@ -170,5 +170,5 @@ if ($resource === 'graph' && $needs_outlook) {
     $success_msg .= " Click Connect again to also authorize Graph (Sending).";
 }
 
-flash_alert($success_msg);
+flashAlert($success_msg);
 redirect($settings_mail_path);

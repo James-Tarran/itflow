@@ -2,8 +2,10 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support');
+
 // Initialize the HTML Purifier to prevent XSS
-require_once "../../../plugins/htmlpurifier/HTMLPurifier.standalone.php";
+require_once "../../../libs/htmlpurifier/HTMLPurifier.standalone.php";
 
 $purifier_config = HTMLPurifier_Config::createDefault();
 $purifier_config->set('Cache.DefinitionImpl', null); // Disable cache by setting a non-existent directory or an invalid one
@@ -12,25 +14,25 @@ $purifier = new HTMLPurifier($purifier_config);
 
 $document_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT * FROM documents WHERE document_id = $document_id LIMIT 1");
+$sql = mysqli_query($mysqli, "SELECT document_client_id, document_content, document_name FROM documents WHERE document_id = $document_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
-$document_name = nullable_htmlentities($row['document_name']);
+$document_name = escapeHtml($row['document_name']);
 $document_content = $purifier->purify($row['document_content']);
+$client_id = intval($row['document_client_id']);
 
+enforceClientAccess();
 
-// Generate the HTML form content using output buffering.
 ob_start();
+
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title text-white"><i class="fa fa-fw fa-file-alt mr-2"></i><?php echo $document_name; ?></h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title text-white"><i class="fa fa-fw fa-file-alt me-2"></i><?= $document_name ?></h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <div class="modal-body prettyContent">
-    <?php echo $document_content; ?>
+    <?= $document_content ?>
 </div>
 
 <script src="../js/pretty_content.js"></script>

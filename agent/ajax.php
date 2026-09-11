@@ -9,7 +9,7 @@
 require_once "../config.php";
 require_once "../functions.php";
 require_once "../includes/check_login.php";
-require_once "../plugins/totp/totp.php";
+require_once "../libs/totp/totp.php";
 
 /*
  * Fetches SSL certificates from remote hosts & returns the relevant info (issuer, expiry, public key)
@@ -25,7 +25,7 @@ if (isset($_GET['certificate_fetch_parse_json_details'])) {
     $name = $_GET['domain'];
 
     // Get SSL cert for domain (if exists)
-    $certificate = getSSL($name);
+    $certificate = getSslCertificate($name);
 
     if ($certificate['success'] == "TRUE") {
         $response['success'] = "TRUE";
@@ -42,68 +42,151 @@ if (isset($_GET['certificate_fetch_parse_json_details'])) {
 
 if (isset($_POST['client_set_notes'])) {
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_client', 2);
 
     $client_id = intval($_POST['client_id']);
-    $notes = sanitizeInput($_POST['notes']);
+    $notes = escapeSql($_POST['notes']);
+
+    enforceClientAccess();
 
     // Update notes
     mysqli_query($mysqli, "UPDATE clients SET client_notes = '$notes' WHERE client_id = $client_id");
 
     // Logging
-    logAction("Client", "Edit", "$session_name edited client notes", $client_id);
+    logAudit("Client", "Edit", "$session_name edited client notes", $client_id);
+
+}
+
+/*
+ * Inline notes for sales documents.
+ *
+ * These replace the invoice/quote/recurring-invoice note modals, which posted
+ * to post.php and reloaded the page. Same permission, client-access and audit
+ * behaviour as those handlers had - only the delivery changed.
+ */
+
+if (isset($_POST['invoice_set_notes'])) {
+
+    validateCSRFToken();
+
+    enforceUserPermission('module_sales', 2);
+
+    $invoice_id = intval($_POST['invoice_id']);
+    $note = escapeSql($_POST['note']);
+
+    $sql = mysqli_query($mysqli, "SELECT invoice_client_id, invoice_number, invoice_prefix FROM invoices WHERE invoice_id = $invoice_id");
+    $row = mysqli_fetch_assoc($sql);
+    $invoice_prefix = escapeSql($row['invoice_prefix']);
+    $invoice_number = intval($row['invoice_number']);
+    $client_id = intval($row['invoice_client_id']);
+
+    enforceClientAccess();
+
+    mysqli_query($mysqli, "UPDATE invoices SET invoice_note = '$note' WHERE invoice_id = $invoice_id");
+
+    logAudit("Invoice", "Edit", "$session_name edited notes on invoice $invoice_prefix$invoice_number", $client_id, $invoice_id);
+
+}
+
+if (isset($_POST['quote_set_notes'])) {
+
+    validateCSRFToken();
+
+    enforceUserPermission('module_sales', 2);
+
+    $quote_id = intval($_POST['quote_id']);
+    $note = escapeSql($_POST['note']);
+
+    $sql = mysqli_query($mysqli, "SELECT quote_client_id, quote_number, quote_prefix FROM quotes WHERE quote_id = $quote_id");
+    $row = mysqli_fetch_assoc($sql);
+    $quote_prefix = escapeSql($row['quote_prefix']);
+    $quote_number = intval($row['quote_number']);
+    $client_id = intval($row['quote_client_id']);
+
+    enforceClientAccess();
+
+    mysqli_query($mysqli, "UPDATE quotes SET quote_note = '$note' WHERE quote_id = $quote_id");
+
+    logAudit("Quote", "Edit", "$session_name edited notes on quote $quote_prefix$quote_number", $client_id, $quote_id);
+
+}
+
+if (isset($_POST['recurring_invoice_set_notes'])) {
+
+    validateCSRFToken();
+
+    enforceUserPermission('module_sales', 2);
+
+    $recurring_invoice_id = intval($_POST['recurring_invoice_id']);
+    $note = escapeSql($_POST['note']);
+
+    $sql = mysqli_query($mysqli, "SELECT recurring_invoice_prefix, recurring_invoice_number, recurring_invoice_client_id FROM recurring_invoices WHERE recurring_invoice_id = $recurring_invoice_id");
+    $row = mysqli_fetch_assoc($sql);
+    $recurring_invoice_prefix = escapeSql($row['recurring_invoice_prefix']);
+    $recurring_invoice_number = intval($row['recurring_invoice_number']);
+    $client_id = intval($row['recurring_invoice_client_id']);
+
+    enforceClientAccess();
+
+    mysqli_query($mysqli, "UPDATE recurring_invoices SET recurring_invoice_note = '$note' WHERE recurring_invoice_id = $recurring_invoice_id");
+
+    logAudit("Recurring Invoice", "Edit", "$session_name edited notes on recurring invoice $recurring_invoice_prefix$recurring_invoice_number", $client_id, $recurring_invoice_id);
 
 }
 
 if (isset($_POST['contact_set_notes'])) {
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_client', 2);
 
     $contact_id = intval($_POST['contact_id']);
-    $notes = sanitizeInput($_POST['notes']);
+    $notes = escapeSql($_POST['notes']);
 
     // Get Contact Details and Client ID for Logging
     $sql = mysqli_query($mysqli,"SELECT contact_name, contact_client_id
         FROM contacts WHERE contact_id = $contact_id"
     );
     $row = mysqli_fetch_assoc($sql);
-    $contact_name = sanitizeInput($row['contact_name']);
+    $contact_name = escapeSql($row['contact_name']);
     $client_id = intval($row['contact_client_id']);
+
+    enforceClientAccess();
 
     // Update notes
     mysqli_query($mysqli, "UPDATE contacts SET contact_notes = '$notes' WHERE contact_id = $contact_id");
 
     // Logging
-    logAction("Contact", "Edit", "$session_name edited contact notes for $contact_name", $client_id, $contact_id);
+    logAudit("Contact", "Edit", "$session_name edited contact notes for $contact_name", $client_id, $contact_id);
 
 }
 
 if (isset($_POST['asset_set_notes'])) {
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
     $asset_id = intval($_POST['asset_id']);
-    $notes = sanitizeInput($_POST['notes']);
+    $notes = escapeSql($_POST['notes']);
 
     // Get Asset Details and Client ID for Logging
     $sql = mysqli_query($mysqli,"SELECT asset_name, asset_client_id
         FROM assets WHERE asset_id = $asset_id"
     );
     $row = mysqli_fetch_assoc($sql);
-    $asset_name = sanitizeInput($row['asset_name']);
+    $asset_name = escapeSql($row['asset_name']);
     $client_id = intval($row['asset_client_id']);
+
+    enforceClientAccess();
 
     // Update notes
     mysqli_query($mysqli, "UPDATE assets SET asset_notes = '$notes' WHERE asset_id = $asset_id");
 
     // Logging
-    logAction("Asset", "Edit", "$session_name edited asset notes for $asset_name", $client_id, $asset_id);
+    logAudit("Asset", "Edit", "$session_name edited asset notes for $asset_name", $client_id, $asset_id);
 
 }
 
@@ -135,10 +218,10 @@ if (isset($_GET['ticket_query_views'])) {
         $users = array_unique($users);
         if (count($users) > 1) {
             // Multiple viewers
-            $response['message'] = "<i class='fas fa-fw fa-eye mr-2'></i>" . nullable_htmlentities(implode(", ", $users) . " are viewing this ticket.");
+            $response['message'] = "<i class='fas fa-fw fa-eye me-2'></i>" . escapeHtml(implode(", ", $users) . " are viewing this ticket.");
         } else {
             // Single viewer
-            $response['message'] = "<i class='fas fa-fw fa-eye mr-2'></i>" . nullable_htmlentities(implode("", $users) . " is viewing this ticket.");
+            $response['message'] = "<i class='fas fa-fw fa-eye me-2'></i>" . escapeHtml(implode("", $users) . " is viewing this ticket.");
         }
     } else {
         // No viewers
@@ -153,7 +236,7 @@ if (isset($_GET['ticket_query_views'])) {
  */
 if (isset($_GET['share_generate_link'])) {
 
-    validateCSRFToken($_GET['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
@@ -161,10 +244,10 @@ if (isset($_GET['share_generate_link'])) {
     $item_encrypted_credential = '';  // Default empty
 
     $client_id = intval($_GET['client_id']);
-    $item_type = sanitizeInput($_GET['type']);
+    $item_type = escapeSql($_GET['type']);
     $item_id = intval($_GET['id']);
-    $item_email = sanitizeInput($_GET['contact_email']);
-    $item_note = sanitizeInput($_GET['note']);
+    $item_email = escapeSql($_GET['contact_email']);
+    $item_note = escapeSql($_GET['note']);
     $item_view_limit = intval($_GET['views']);
     $item_view_limit_wording = "";
     if ($item_view_limit == 1) {
@@ -188,19 +271,24 @@ if (isset($_GET['share_generate_link'])) {
 
     if ($item_type == "Document") {
         $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT document_name FROM documents WHERE document_id = $item_id AND document_client_id = $client_id LIMIT 1"));
-        $item_name = sanitizeInput($row['document_name']);
+        $item_name = escapeSql($row['document_name']);
     }
 
     if ($item_type == "File") {
         $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT file_name FROM files WHERE file_id = $item_id AND file_client_id = $client_id LIMIT 1"));
-        $item_name = sanitizeInput($row['file_name']);
+        $item_name = escapeSql($row['file_name']);
     }
 
     if ($item_type == "Credential") {
+
+        // Sharing a credential hands out the plaintext, so it needs the same
+        // module access as reading one anywhere else in the app
+        enforceUserPermission('module_credential');
+
         $credential = mysqli_query($mysqli, "SELECT credential_name, credential_username, credential_password FROM credentials WHERE credential_id = $item_id AND credential_client_id = $client_id LIMIT 1");
         $row = mysqli_fetch_assoc($credential);
 
-        $item_name = sanitizeInput($row['credential_name']);
+        $item_name = escapeSql($row['credential_name']);
 
         // Decrypt & re-encrypt username/password for sharing
         $credential_encryption_key = randomString();
@@ -228,16 +316,16 @@ if (isset($_GET['share_generate_link'])) {
         $url = "https://$config_base_url/guest/guest_view_item.php?id=$share_id&key=$item_key";
     }
 
-    $sql = mysqli_query($mysqli,"SELECT * FROM companies WHERE company_id = 1");
+    $sql = mysqli_query($mysqli,"SELECT company_name, company_phone, company_phone_country_code FROM companies WHERE company_id = 1");
     $row = mysqli_fetch_assoc($sql);
-    $company_name = sanitizeInput($row['company_name']);
-    $company_phone = sanitizeInput(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
+    $company_name = escapeSql($row['company_name']);
+    $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
     // Sanitize Config vars from get_settings.php
-    $config_ticket_from_name = sanitizeInput($config_ticket_from_name);
-    $config_ticket_from_email = sanitizeInput($config_ticket_from_email);
-    $config_mail_from_name = sanitizeInput($config_mail_from_name);
-    $config_mail_from_email = sanitizeInput($config_mail_from_email);
+    $config_ticket_from_name = escapeSql($config_ticket_from_name);
+    $config_ticket_from_email = escapeSql($config_ticket_from_email);
+    $config_mail_from_name = escapeSql($config_mail_from_name);
+    $config_mail_from_email = escapeSql($config_mail_from_email);
 
     // Send user e-mail, if specified
     if(!empty($config_smtp_host) && filter_var($item_email, FILTER_VALIDATE_EMAIL)){
@@ -269,7 +357,7 @@ if (isset($_GET['share_generate_link'])) {
     echo json_encode($url);
 
     // Logging
-    logAction("Share", "Create", "$session_name created shared link for $item_type - $item_name", $client_id, $item_id);
+    logAudit("Share", "Create", "$session_name created shared link for $item_type - $item_name", $client_id, $item_id);
 
 }
 
@@ -283,7 +371,7 @@ if (isset($_GET['get_active_clients'])) {
         $mysqli,
         "SELECT client_id, client_name FROM clients
         WHERE client_archived_at IS NULL
-        $access_permission_query
+        " . clientScopeSql('clients.client_id') . "
         ORDER BY client_accessed_at DESC"
     );
 
@@ -295,6 +383,85 @@ if (isset($_GET['get_active_clients'])) {
 }
 
 /*
+ * Returns the body of one canned response, for the picker on the ticket reply form.
+ * Fetched on demand rather than rendered into every ticket page, because the bodies are
+ * full HTML replies and an install can have a lot of them.
+ */
+if (isset($_GET['get_canned_response'])) {
+    enforceUserPermission('module_support');
+
+    $canned_response_id = intval($_GET['get_canned_response']);
+
+    $canned_sql = mysqli_query($mysqli, "SELECT canned_response_body FROM canned_responses
+        WHERE canned_response_id = $canned_response_id AND canned_response_archived_at IS NULL LIMIT 1");
+
+    $canned_row = mysqli_fetch_assoc($canned_sql);
+
+    // Purified here rather than at save time, the same way ticket replies and ticket
+    // template details are - what lands in the editor is what would have been rendered
+    require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
+
+    $canned_purifier_config = HTMLPurifier_Config::createDefault();
+    $canned_purifier_config->set('Cache.DefinitionImpl', null);
+    $canned_purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
+    $canned_purifier = new HTMLPurifier($canned_purifier_config);
+
+    $response = [];
+    $response['body'] = $canned_row ? $canned_purifier->purify($canned_row['canned_response_body']) : '';
+
+    echo json_encode($response);
+
+}
+
+/*
+ * Returns a document's rendered content for the file previewer on agent/files.php.
+ *
+ * The previewer shows files by pointing an iframe at file.php, but a document is
+ * rows in a table, not bytes on disk. Rather than embedding every document's
+ * HTML in the page payload - a folder of long documents would be megabytes of
+ * JSON on a page that shows two dozen tiles - it is fetched when the document is
+ * actually opened.
+ *
+ * Purified here rather than at save time, the same way canned responses above
+ * and agent/document.php do it.
+ */
+if (isset($_GET['get_document_content'])) {
+    enforceUserPermission('module_support');
+
+    $document_id = intval($_GET['get_document_content']);
+
+    $document_sql = mysqli_query($mysqli, "SELECT document_client_id, document_content, document_name
+        FROM documents WHERE document_id = $document_id LIMIT 1");
+
+    $document_row = mysqli_fetch_assoc($document_sql);
+
+    $response = [];
+
+    if ($document_row) {
+        // Scope the fetch to the client the document belongs to - this endpoint
+        // takes an id straight from the query string
+        $client_id = intval($document_row['document_client_id']);
+        enforceClientAccess();
+
+        require_once "../libs/htmlpurifier/HTMLPurifier.standalone.php";
+
+        $document_purifier_config = HTMLPurifier_Config::createDefault();
+        $document_purifier_config->set('Cache.DefinitionImpl', null);
+        $document_purifier_config->set('URI.AllowedSchemes', ['data' => true, 'src' => true, 'http' => true, 'https' => true]);
+        $document_purifier = new HTMLPurifier($document_purifier_config);
+
+        $response['name'] = $document_row['document_name'];
+        $response['content'] = $document_purifier->purify($document_row['document_content']);
+    } else {
+        $response['name'] = '';
+        $response['content'] = '';
+    }
+
+    echo json_encode($response);
+
+}
+
+/*
  * Returns ordered list of active contacts for a specified client
  */
 if (isset($_GET['get_client_contacts'])) {
@@ -302,14 +469,19 @@ if (isset($_GET['get_client_contacts'])) {
 
     $client_id = intval($_GET['client_id']);
 
+    enforceClientAccess();
+
     $contact_sql = mysqli_query(
         $mysqli,
-        "SELECT contact_id, contact_name, contact_primary, contact_important, contact_technical FROM contacts
+        "SELECT contact_id, contact_name, contact_title, contact_email, contact_primary, contact_important, contact_technical FROM contacts
         LEFT JOIN clients on contact_client_id = client_id
         WHERE contacts.contact_archived_at IS NULL AND contact_client_id = $client_id
-        $access_permission_query
+        " . clientScopeSql('contact_client_id') . "
         ORDER BY contact_primary DESC, contact_technical DESC, contact_important DESC, contact_name"
     );
+
+    // Always return the key, so a client with none gives [] rather than null
+    $response['contacts'] = [];
 
     while ($row = mysqli_fetch_assoc($contact_sql)) {
         $response['contacts'][] = $row;
@@ -326,15 +498,20 @@ if (isset($_GET['get_client_assets'])) {
 
     $client_id = intval($_GET['client_id']);
 
+    enforceClientAccess();
+
     $asset_sql = mysqli_query(
         $mysqli,
-        "SELECT asset_id, asset_name, contact_name FROM assets
+        "SELECT asset_id, asset_name, asset_type, asset_make, asset_model, contact_name FROM assets
         LEFT JOIN clients on asset_client_id = client_id
         LEFT JOIN contacts ON contact_id = asset_contact_id
         WHERE assets.asset_archived_at IS NULL AND asset_client_id = $client_id
-        $access_permission_query
-        ORDER BY asset_favorite DESC, asset_name"
+        " . clientScopeSql('asset_client_id') . "
+        ORDER BY asset_type ASC, asset_favorite DESC, asset_name"
     );
+
+    // Always return the key, so a client with no assets gives [] rather than null
+    $response['assets'] = [];
 
     while ($row = mysqli_fetch_assoc($asset_sql)) {
         $response['assets'][] = $row;
@@ -351,14 +528,19 @@ if (isset($_GET['get_client_locations'])) {
 
     $client_id = intval($_GET['client_id']);
 
+    enforceClientAccess();
+
     $locations_sql = mysqli_query(
         $mysqli,
         "SELECT location_id, location_name FROM locations
         LEFT JOIN clients on location_client_id = client_id
         WHERE locations.location_archived_at IS NULL AND location_client_id = $client_id
-        $access_permission_query
+        " . clientScopeSql('location_client_id') . "
         ORDER BY location_primary DESC, location_name ASC"
     );
+
+    // Always return the key, so a client with none gives [] rather than null
+    $response['locations'] = [];
 
     while ($row = mysqli_fetch_assoc($locations_sql)) {
         $response['locations'][] = $row;
@@ -375,17 +557,51 @@ if (isset($_GET['get_client_vendors'])) {
 
     $client_id = intval($_GET['client_id']);
 
+    enforceClientAccess();
+
     $vendors_sql = mysqli_query(
         $mysqli,
         "SELECT vendor_id, vendor_name FROM vendors
         LEFT JOIN clients on vendor_client_id = client_id
         WHERE vendors.vendor_archived_at IS NULL AND vendor_client_id = $client_id
-        $access_permission_query
+        " . clientScopeSql('vendor_client_id') . "
         ORDER BY vendor_name ASC"
     );
 
+    // Always return the key, so a client with none gives [] rather than null
+    $response['vendors'] = [];
+
     while ($row = mysqli_fetch_assoc($vendors_sql)) {
         $response['vendors'][] = $row;
+    }
+
+    echo json_encode($response);
+}
+
+/*
+ * Returns open projects for a specified client
+ */
+if (isset($_GET['get_client_projects'])) {
+    enforceUserPermission('module_client');
+
+    $client_id = intval($_GET['client_id']);
+
+    enforceClientAccess();
+
+    $projects_sql = mysqli_query(
+        $mysqli,
+        "SELECT project_id, project_name FROM projects
+        LEFT JOIN clients on project_client_id = client_id
+        WHERE projects.project_archived_at IS NULL AND projects.project_completed_at IS NULL AND project_client_id = $client_id
+        " . clientScopeSql('project_client_id') . "
+        ORDER BY project_name ASC"
+    );
+
+    // Always return the key, so a client with none gives [] rather than null
+    $response['projects'] = [];
+
+    while ($row = mysqli_fetch_assoc($projects_sql)) {
+        $response['projects'][] = $row;
     }
 
     echo json_encode($response);
@@ -401,7 +617,7 @@ if (isset($_GET['get_totp_token_via_id'])) {
     $credential_id = intval($_GET['credential_id']);
 
     $sql = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT credential_name, credential_otp_secret, credential_client_id FROM credentials WHERE credential_id = $credential_id"));
-    $name = sanitizeInput($sql['credential_name']);
+    $name = escapeSql($sql['credential_name']);
     $totp_secret = $sql['credential_otp_secret'];
     $client_id = intval($sql['credential_client_id']);
 
@@ -417,13 +633,13 @@ if (isset($_GET['get_totp_token_via_id'])) {
 
     if ($recent_totp_view_logged_count == 0) {
         // Logging
-        logAction("Credential", "View TOTP", "$session_name viewed credential TOTP code for $name", $client_id, $credential_id);
+        logAudit("Credential", "View TOTP", "$session_name viewed credential TOTP code for $name", $client_id, $credential_id);
 
     }
 }
 
 if (isset($_GET['get_readable_pass'])) {
-    echo json_encode(GenerateReadablePassword(1));
+    echo json_encode(generateReadablePassword());
 }
 
 /*
@@ -478,49 +694,58 @@ if (isset($_POST['update_kanban_ticket'])) {
         if ($oldStatus === false) {
             // if ticket was not moved, just uptdate the order on kanban
             mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban WHERE ticket_id = $ticket_id");
-            customAction('ticket_update', $ticket_id);
+            triggerCustomAction('ticket_update', $ticket_id);
         } else {
             // If the ticket was moved from a resolved status to another status, we need to update ticket_resolved_at
             if ($oldStatus === $statuses['Resolved']) {
                 mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id");
-                customAction('ticket_update', $ticket_id);
+                resetTicketResolutionSla($ticket_id);
+                syncTicketSlaClock($ticket_id);
+                $new_status_name = escapeSql(getTicketStatusName($status));
+                logTicketHistory($ticket_id, "$session_name reopened the ticket to $new_status_name from the kanban");
+                triggerCustomAction('ticket_update', $ticket_id);
             } elseif ($status === $statuses['Resolved']) {
                 // If the ticket was moved to a resolved status, we need to update ticket_resolved_at
                 mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status, ticket_resolved_at = NOW() WHERE ticket_id = $ticket_id");
-                customAction('ticket_update', $ticket_id);
+                // An agent resolving the ticket counts as a response, same as
+                // resolving from the ticket itself does
+                setTicketFirstResponse($ticket_id);
+                setTicketResolutionSlaMet($ticket_id);
+                syncTicketSlaClock($ticket_id);
+                logTicketHistory($ticket_id, "$session_name resolved the ticket from the kanban");
+                triggerCustomAction('ticket_update', $ticket_id);
 
                 // Client notification email
                 if (!empty($config_smtp_host) && $config_ticket_client_general_notifications == 1) {
 
                     // Get details
                     $ticket_sql = mysqli_query($mysqli, "SELECT contact_name, contact_email, ticket_prefix, ticket_number, ticket_subject, ticket_status_name, ticket_assigned_to, ticket_url_key, ticket_client_id FROM tickets
-                        LEFT JOIN clients ON ticket_client_id = client_id
                         LEFT JOIN contacts ON ticket_contact_id = contact_id
                         LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
                         WHERE ticket_id = $ticket_id
                     ");
                     $row = mysqli_fetch_assoc($ticket_sql);
 
-                    $contact_name = sanitizeInput($row['contact_name']);
-                    $contact_email = sanitizeInput($row['contact_email']);
-                    $ticket_prefix = sanitizeInput($row['ticket_prefix']);
+                    $contact_name = escapeSql($row['contact_name']);
+                    $contact_email = escapeSql($row['contact_email']);
+                    $ticket_prefix = escapeSql($row['ticket_prefix']);
                     $ticket_number = intval($row['ticket_number']);
-                    $ticket_subject = sanitizeInput($row['ticket_subject']);
+                    $ticket_subject = escapeSql($row['ticket_subject']);
                     $client_id = intval($row['ticket_client_id']);
                     $ticket_assigned_to = intval($row['ticket_assigned_to']);
-                    $ticket_status = sanitizeInput($row['ticket_status_name']);
-                    $url_key = sanitizeInput($row['ticket_url_key']);
+                    $ticket_status = escapeSql($row['ticket_status_name']);
+                    $url_key = escapeSql($row['ticket_url_key']);
 
                     // Sanitize Config vars from get_settings.php
-                    $config_ticket_from_name = sanitizeInput($config_ticket_from_name);
-                    $config_ticket_from_email = sanitizeInput($config_ticket_from_email);
-                    $config_base_url = sanitizeInput($config_base_url);
+                    $config_ticket_from_name = escapeSql($config_ticket_from_name);
+                    $config_ticket_from_email = escapeSql($config_ticket_from_email);
+                    $config_base_url = escapeSql($config_base_url);
 
                     // Get Company Info
                     $sql = mysqli_query($mysqli, "SELECT company_name, company_phone, company_phone_country_code FROM companies WHERE company_id = 1");
                     $row = mysqli_fetch_assoc($sql);
-                    $company_name = sanitizeInput($row['company_name']);
-                    $company_phone = sanitizeInput(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
+                    $company_name = escapeSql($row['company_name']);
+                    $company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
 
                     // EMAIL
                     $subject = "Ticket resolved - [$ticket_prefix$ticket_number] - $ticket_subject | (pending closure)";
@@ -548,7 +773,7 @@ if (isset($_POST['update_kanban_ticket'])) {
                     $sql_watchers = mysqli_query($mysqli, "SELECT watcher_email FROM ticket_watchers WHERE watcher_ticket_id = $ticket_id");
                     $body .= "<br><br>----------------------------------------<br>YOU ARE A COLLABORATOR ON THIS TICKET";
                     while ($row = mysqli_fetch_assoc($sql_watchers)) {
-                        $watcher_email = sanitizeInput($row['watcher_email']);
+                        $watcher_email = escapeSql($row['watcher_email']);
 
                         // Queue Mail
                         $data[] = [
@@ -567,7 +792,10 @@ if (isset($_POST['update_kanban_ticket'])) {
             } else {
                 // If the ticket was moved from any status to another status
                 mysqli_query($mysqli, "UPDATE tickets SET ticket_order = $kanban, ticket_status = $status WHERE ticket_id = $ticket_id");
-                customAction('ticket_update', $ticket_id);
+                syncTicketSlaClock($ticket_id);
+                $new_status_name = escapeSql(getTicketStatusName($status));
+                logTicketHistory($ticket_id, "$session_name set the status to $new_status_name from the kanban");
+                triggerCustomAction('ticket_update', $ticket_id);
             }
         }
 
@@ -581,7 +809,7 @@ if (isset($_POST['update_kanban_ticket'])) {
 if (isset($_POST['update_ticket_tasks_order'])) {
     // Update multiple ticket tasks order
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
@@ -603,7 +831,7 @@ if (isset($_POST['update_ticket_tasks_order'])) {
 if (isset($_POST['update_task_templates_order'])) {
     // Update multiple task templates order
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
@@ -624,7 +852,7 @@ if (isset($_POST['update_task_templates_order'])) {
 
 if (isset($_POST['update_project_template_ticket_order'])) {
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_support', 2);
 
@@ -646,7 +874,7 @@ if (isset($_POST['update_project_template_ticket_order'])) {
 if (isset($_POST['update_quote_items_order'])) {
     // Update multiple quote items order
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_sales', 2);
 
@@ -668,7 +896,7 @@ if (isset($_POST['update_quote_items_order'])) {
 if (isset($_POST['update_invoice_items_order'])) {
     // Update multiple invoice items order
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_sales', 2);
 
@@ -690,7 +918,7 @@ if (isset($_POST['update_invoice_items_order'])) {
 if (isset($_POST['update_recurring_invoice_items_order'])) {
     // Update multiple recurring invoice items order
 
-    validateCSRFToken($_POST['csrf_token']);
+    validateCSRFToken();
 
     enforceUserPermission('module_sales', 2);
 
@@ -712,7 +940,7 @@ if (isset($_POST['update_recurring_invoice_items_order'])) {
 if (isset($_GET['client_duplicate_check'])) {
     enforceUserPermission('module_client', 2);
 
-    $name = sanitizeInput($_GET['name']);
+    $name = escapeSql($_GET['name']);
 
     $response['message'] = ""; // default
 
@@ -725,9 +953,50 @@ if (isset($_GET['client_duplicate_check'])) {
 
         if (mysqli_num_rows($sql_clients) > 0) {
             while ($row = mysqli_fetch_assoc($sql_clients)) {
-                $response['message'] = "<i class='fas fa-fw fa-copy mr-2'></i> Potential duplicate: <i>" . nullable_htmlentities($row['client_name']) . "</i> already exists.";
+                $response['message'] = "<i class='fas fa-fw fa-copy me-2'></i> Potential duplicate: <i>" . escapeHtml($row['client_name']) . "</i> already exists.";
             }
         }
+    }
+
+    echo json_encode($response);
+}
+
+/*
+ * Live check behind the IP address field on the add/edit network IP modals.
+ *
+ * Runs the exact same checkIpForNetwork() the POST handler runs, so what the
+ * field says while you type is what the save will do - no second copy of the
+ * rules to drift. It's advisory only; the handler still checks on submit.
+ */
+if (isset($_GET['network_ip_check'])) {
+    enforceUserPermission('module_support', 2);
+
+    $network_id = intval($_GET['network_id'] ?? 0);
+    $ip_id = intval($_GET['ip_id'] ?? 0);
+
+    $client_id = intval(getFieldById('networks', $network_id, 'network_client_id'));
+
+    enforceClientAccess();
+
+    $ip = $_GET['ip'] ?? '';
+
+    $response = ['ok' => false, 'ip' => '', 'message' => ''];
+
+    if (trim($ip) !== '') {
+
+        $ip_error = checkIpForNetwork($ip, $network_id, $ip_id);
+
+        if ($ip_error === '') {
+            $response['ok'] = true;
+            $response['ip'] = $ip;
+            $response['message'] = "<i class='fas fa-fw fa-check me-2'></i>" . escapeHtml($ip) . " is available";
+        } else {
+            // checkIpForNetwork() builds its message for flashAlert(), which
+            // escapes at render - this lands in innerHTML instead, so it has
+            // to be escaped here
+            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle me-2'></i>" . alertMessageHtml($ip_error);
+        }
+
     }
 
     echo json_encode($response);
@@ -736,8 +1005,8 @@ if (isset($_GET['client_duplicate_check'])) {
 if (isset($_GET['contact_email_check'])) {
     enforceUserPermission('module_client', 2);
 
-    $email = sanitizeInput($_GET['email']);
-    $domain = sanitizeInput(substr($_GET['email'], strpos($_GET['email'], '@') + 1));
+    $email = escapeSql($_GET['email']);
+    $domain = escapeSql(substr($_GET['email'], strpos($_GET['email'], '@') + 1));
 
     $response['message'] = ""; // default
 
@@ -747,13 +1016,13 @@ if (isset($_GET['contact_email_check'])) {
         $sql_contacts = mysqli_query($mysqli, "SELECT contact_email FROM contacts WHERE contact_email = '$email' LIMIT 1");
         if (mysqli_num_rows($sql_contacts) > 0) {
             while ($row = mysqli_fetch_assoc($sql_contacts)) {
-                $response['message'] = "<i class='fas fa-fw fa-copy mr-2'></i> Potential duplicate: <i>" . nullable_htmlentities($row['contact_email']) . "</i> already exists.";
+                $response['message'] = "<i class='fas fa-fw fa-copy me-2'></i> Potential duplicate: <i>" . escapeHtml($row['contact_email']) . "</i> already exists.";
             }
         }
 
         // 2. MX record check
         if (!checkdnsrr($domain, 'MX')) {
-            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle mr-2'></i> E-mail domain invalid.";
+            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle me-2'></i> E-mail domain invalid.";
         }
 
     }
@@ -765,89 +1034,69 @@ if (isset($_GET['ai_reword'])) {
 
     header('Content-Type: application/json');
 
-    $sql = mysqli_query($mysqli, "SELECT * FROM ai_models LEFT JOIN ai_providers ON ai_model_ai_provider_id = ai_provider_id WHERE ai_model_use_case = 'General' LIMIT 1");
+    // The reword button sits on every TinyMCE instance, so the ticket editor asks for
+    // the Tickets model and everything else gets General. Anything unrecognised is
+    // treated as General rather than trusted into the query.
+    $use_case = ($_GET['use_case'] ?? '') === 'Tickets' ? 'Tickets' : 'General';
 
-    $row = mysqli_fetch_assoc($sql);
-    $model_name = $row['ai_model_name'];
-    $promptText = $row['ai_model_prompt'];
-    $url = $row['ai_provider_api_url'];
-    $key = $row['ai_provider_api_key'];
+    $model = getAiModel($use_case);
+
+    if (!$model) {
+        echo json_encode(['error' => aiModelMissingError($use_case)]);
+        exit;
+    }
 
     // Collecting the input data from the AJAX request.
     $inputJSON = file_get_contents('php://input');
     $input = json_decode($inputJSON, TRUE); // Convert JSON into array.
 
-    $userText = $input['text'];
+    $userText = $input['text'] ?? '';
 
-    // Preparing the data for the OpenAI Chat API request.
-    $data = [
-        "model" => "$model_name", // Specify the model
-        "messages" => [
-            ["role" => "system", "content" => $promptText],
-            ["role" => "user", "content" => $userText],
-        ],
-        "temperature" => 0.5
-    ];
-
-    // Initialize cURL session to the OpenAI Chat API.
-    $ch = curl_init("$url");
-
-    // Set cURL options for the request.
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . $key,
+    $result = callAiApi($model, [
+        ["role" => "system", "content" => $model['ai_model_prompt']],
+        ["role" => "user", "content" => $userText],
     ]);
 
-    // Execute the cURL session and capture the response.
-    $response = curl_exec($ch);
-    curl_close($ch);
-
-    // Decode the JSON response.
-    $responseData = json_decode($response, true);
-
-    // Check if the response contains the expected data and return it.
-    if (isset($responseData['choices'][0]['message']['content'])) {
-        // Get the response content.
-        $content = $responseData['choices'][0]['message']['content'];
-
-        // Clean any leading "html" word or other unwanted text at the beginning.
-        $content = preg_replace('/^html/i', '', $content);  // Remove any occurrence of 'html' at the start
-
-        // Clean the response content to remove backticks or code block markers.
-        $cleanedContent = str_replace('```', '', $content); // Remove backticks if they exist.
-
-        // Trim any leading/trailing whitespace.
-        $cleanedContent = trim($cleanedContent);
-
-        // Return the cleaned response.
-        echo json_encode(['rewordedText' => $cleanedContent]);
-    } else {
-        // Handle errors or unexpected response structure.
-        echo json_encode(['rewordedText' => 'Failed to get a response from the AI API.']);
+    // Report failures as an error, never as reworded text - the editor writes
+    // rewordedText straight back over the user's content
+    if (!$result['ok']) {
+        echo json_encode(['error' => $result['error']]);
+        exit;
     }
+
+    $content = $result['content'];
+
+    // Clean any leading "html" word or other unwanted text at the beginning.
+    $content = preg_replace('/^html/i', '', $content);  // Remove any occurrence of 'html' at the start
+
+    // Clean the response content to remove backticks or code block markers.
+    $cleanedContent = str_replace('```', '', $content); // Remove backticks if they exist.
+
+    // Trim any leading/trailing whitespace.
+    $cleanedContent = trim($cleanedContent);
+
+    echo json_encode(['rewordedText' => $cleanedContent]);
 
 }
 
 if (isset($_GET['ai_create_document_template'])) {
-    // get_ai_document_template.php
+
+    enforceUserPermission('module_support');
 
     header('Content-Type: text/html; charset=UTF-8');
-
-    $sql = mysqli_query($mysqli, "SELECT * FROM ai_models LEFT JOIN ai_providers ON ai_model_ai_provider_id = ai_provider_id WHERE ai_model_use_case = 'General' LIMIT 1");
-
-    $row = mysqli_fetch_assoc($sql);
-    $model_name = $row['ai_model_name'];
-    $url = $row['ai_provider_api_url'];
-    $key = $row['ai_provider_api_key'];
 
     $prompt = $_POST['prompt'] ?? '';
 
     // Basic validation
-    if(empty($prompt)){
+    if (empty($prompt)) {
         echo "No prompt provided.";
+        exit;
+    }
+
+    $model = getAiModel('Documentation');
+
+    if (!$model) {
+        echo escapeHtml(aiModelMissingError('Documentation'));
         exit;
     }
 
@@ -855,37 +1104,18 @@ if (isset($_GET['ai_create_document_template'])) {
     $system_message = "You are a helpful IT documentation assistant. You will create a well-structured HTML template for IT documentation based on a given prompt. Include headings, subheadings, bullet points, and possibly tables for clarity. No Lorem Ipsum, use realistic placeholders and professional language.";
     $user_message = "Create an HTML formatted IT documentation template based on the following request:\n\n\"$prompt\"\n\nThe template should be structured, professional, and useful for IT staff. Include relevant sections, instructions, prerequisites, and best practices.";
 
-    $post_data = [
-        "model" => "$model_name",
-        "messages" => [
-            ["role" => "system", "content" => $system_message],
-            ["role" => "user", "content" => $user_message]
-        ],
-        "temperature" => 0.5
-    ];
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . $key
+    $result = callAiApi($model, [
+        ["role" => "system", "content" => $system_message],
+        ["role" => "user", "content" => $user_message]
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
 
-    $response = curl_exec($ch);
-    if (curl_errno($ch)) {
-        echo "Error: " . curl_error($ch);
+    if (!$result['ok']) {
+        echo "<p>" . escapeHtml($result['error']) . "</p>";
         exit;
     }
-    curl_close($ch);
-
-    $response_data = json_decode($response, true);
-    $template = $response_data['choices'][0]['message']['content'] ?? "<p>No content returned from AI.</p>";
 
     // Print the generated HTML template directly
-    echo $template;
+    echo $result['content'];
 }
 
 if (isset($_GET['ai_ticket_summary'])) {
@@ -894,12 +1124,12 @@ if (isset($_GET['ai_ticket_summary'])) {
 
     header('Content-Type: text/html; charset=UTF-8');
 
-    $sql = mysqli_query($mysqli, "SELECT * FROM ai_models LEFT JOIN ai_providers ON ai_model_ai_provider_id = ai_provider_id WHERE ai_model_use_case = 'General' LIMIT 1");
+    $model = getAiModel('Tickets');
 
-    $row = mysqli_fetch_assoc($sql);
-    $model_name = $row['ai_model_name'];
-    $url = $row['ai_provider_api_url'];
-    $key = $row['ai_provider_api_key'];
+    if (!$model) {
+        echo escapeHtml(aiModelMissingError('Tickets'));
+        exit;
+    }
 
     // Retrieve the ticket_id from POST
     $ticket_id = intval($_POST['ticket_id']);
@@ -976,45 +1206,24 @@ if (isset($_GET['ai_ticket_summary'])) {
     If any part of the ticket or replies is unclear or ambiguous, mention it in the summary and suggest if further clarification is needed.
     ";
 
-    // Prepare the POST data
-    $post_data = [
-        "model" => "$model_name",
-        "messages" => [
-            ["role" => "system", "content" => "Your task is to summarize IT support tickets with clear, concise details."],
-            ["role" => "user", "content" => $prompt]
-        ],
-        "temperature" => 0.3
-    ];
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . $key
+    $result = callAiApi($model, [
+        ["role" => "system", "content" => "Your task is to summarize IT support tickets with clear, concise details."],
+        ["role" => "user", "content" => $prompt]
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
 
-    $response = curl_exec($ch);
-    if (curl_errno($ch)) {
-        echo "Error: " . curl_error($ch);
+    if (!$result['ok']) {
+        echo "<p>" . escapeHtml($result['error']) . "</p>";
         exit;
     }
-    curl_close($ch);
 
-    $response_data = json_decode($response, true);
-    $summary = $response_data['choices'][0]['message']['content'] ?? "No summary available.";
-
-
-    echo $summary; // nl2br to convert newlines to <br>, htmlspecialchars to prevent XSS
+    echo $result['content'];
 }
 
 // Stops people trying to use sub-domains in the domains tracker
 if (isset($_GET['apex_domain_check'])) {
     enforceUserPermission('module_support', 2);
 
-    $domain = sanitizeInput($_GET['domain']);
+    $domain = escapeSql($_GET['domain']);
 
     $response['message'] = ""; // default
 
@@ -1023,7 +1232,7 @@ if (isset($_GET['apex_domain_check'])) {
         // SOA record check
         //  This isn't 100%, as sub-domains can have their own SOA but will capture 99%
         if (!checkdnsrr($domain, 'SOA')) {
-            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle mr-2'></i> Domain name is invalid.";
+            $response['message'] = "<i class='fas fa-fw fa-exclamation-triangle me-2'></i> Domain name is invalid.";
         }
 
     }
@@ -1049,4 +1258,29 @@ if (isset($_GET['get_internal_users'])) {
 
     echo json_encode($response);
     exit;
+}
+
+if (isset($_GET['get_credential_via_id'])) {
+    enforceUserPermission('module_credential');
+
+    $credential_id = intval($_GET['credential_id']);
+
+    $sql = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT credential_name, credential_username, credential_password, credential_client_id FROM credentials WHERE credential_id = $credential_id"));
+    $name = escapeSql($sql['credential_name']);
+    $client_id = intval($sql['credential_client_id']);
+
+    enforceClientAccess($client_id);
+
+    $response = array(
+        'username' => decryptCredentialEntry($sql['credential_username']),
+        'password' => decryptCredentialEntry($sql['credential_password'])
+    );
+    echo json_encode($response);
+
+    // Only log if this user hasn't viewed this credential recently (mirrors TOTP dedup)
+    $check_recent_view = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(log_id) AS recent_view FROM logs WHERE log_type = 'Credential' AND log_action = 'View' AND log_user_id = $session_user_id AND log_entity_id = $credential_id AND log_client_id = $client_id AND log_created_at > (NOW() - INTERVAL 5 MINUTE)"));
+
+    if (intval($check_recent_view['recent_view']) == 0) {
+        logAudit("Credential", "View", "$session_name viewed credential $name", $client_id, $credential_id);
+    }
 }

@@ -8,129 +8,32 @@ ob_start();
 
 ?>
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fas fa-fw fa-route mr-2"></i>New Trip</h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fas fa-fw fa-route me-2"></i>New Trip</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
     <div class="modal-body">
 
-        <div class="form-row">
-            <div class="form-group col">
-                <label>Date <strong class="text-danger">*</strong></label>
-                <div class="input-group">
-                    <div class="input-group-prepend">
-                        <span class="input-group-text"><i class="fa fa-fw fa-calendar"></i></span>
-                    </div>
-                    <input type="date" class="form-control" name="date" max="2999-12-31" value="<?php echo date("Y-m-d"); ?>" required>
-                </div>
-            </div>
-
-            <div class="form-group col">
-                <label>Miles <strong class="text-danger">*</strong> / <span class="text-secondary">Roundtrip</span></label>
-                <div class="input-group">
-                    <div class="input-group-prepend">
-                        <span class="input-group-text"><i class="fa fa-fw fa-bicycle"></i></span>
-                    </div>
-                    <input type="text" class="form-control" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,1}" name="miles" placeholder="0.0" required autofocus>
-                    <div class="input-group-append">
-                        <div class="input-group-text">
-                            <input type="checkbox" name="roundtrip" value="1">
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Location <strong class="text-danger">*</strong></label>
-            <div class="input-group">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fa fa-fw fa-map-marker-alt"></i></span>
-                </div>
-                <input type="text" class="form-control" name="source" placeholder="Enter your starting location" maxlength="200" required>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <div class="input-group">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fa fa-fw fa-arrow-right"></i></span>
-                </div>
-                <select class="form-control select2" name="destination" data-tags="true" data-placeholder="- Select or Enter a Destination -" required>
-                    <option value=""></option>
-                    <?php
-                    if ($client_id) {
-                        $sql_locations = mysqli_query($mysqli, "SELECT * FROM locations WHERE location_archived_at IS NULL AND location_client_id = $client_id ORDER BY location_name ASC");
-                    while ($row = mysqli_fetch_assoc($sql_locations)) {
-                        $location_name = nullable_htmlentities($row['location_name']);
-                        $location_address = nullable_htmlentities($row['location_address']);
-                        $location_city = nullable_htmlentities($row['location_city']);
-                        $location_state = nullable_htmlentities($row['location_state']);
-                        $location_zip = nullable_htmlentities($row['location_zip']);
-                        ?>
-                        <option><?php echo "$location_address $location_city $location_state $location_zip"; ?></option>
-                        <?php
-                    }
-                } ?>
-                </select>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label>Purpose <strong class="text-danger">*</strong></label>
-            <textarea rows="4" class="form-control" placeholder="Enter a purpose" name="purpose" maxlength="200" required></textarea>
-        </div>
-
-        <div class="form-group">
-            <label>Driver</label>
-            <div class="input-group">
-                <div class="input-group-prepend">
-                    <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                </div>
-                <select class="form-control select2" name="user" required>
-                    <option value="">- Driver -</option>
-                    <?php
-
-                    $sql = mysqli_query($mysqli, "SELECT user_id, user_name FROM users
-                        WHERE user_type = 1 AND user_archived_at IS NULL ORDER BY user_name ASC"
-                    );
-                    while ($row = mysqli_fetch_assoc($sql)) {
-                        $user_id = intval($row['user_id']);
-                        $user_name = nullable_htmlentities($row['user_name']);
-                        ?>
-                        <option <?php if ($session_user_id == $user_id) { echo "selected"; } ?> value="<?php echo $user_id; ?>"><?php echo $user_name; ?></option>
-
-                        <?php
-                    }
-                    ?>
-                </select>
-            </div>
-        </div>
-
         <?php if ($client_id) { ?>
-            <input type="hidden" name="client_id" value="<?php echo $client_id; ?>">
+            <input type="hidden" name="client_id" value="<?= $client_id ?>">
         <?php }else{ ?>
 
-            <div class="form-group">
+            <div class="mb-3">
                 <label>Client</label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                    </div>
-                    <select class="form-control select2" name="client_id" required>
+                    <select class="form-select select2" name="client_id" required>
                         <option value="0">- Client (Optional) -</option>
                         <?php
 
-                        $sql = mysqli_query($mysqli, "SELECT * FROM clients WHERE client_archived_at is NULL ORDER BY client_name ASC");
+                        $sql = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE client_archived_at is NULL " . clientScopeSql('clients.client_id') . " ORDER BY client_name ASC");
                         while ($row = mysqli_fetch_assoc($sql)) {
                             $client_id_select = intval($row['client_id']);
-                            $client_name = nullable_htmlentities($row['client_name']);
+                            $client_name = escapeHtml($row['client_name']);
                             ?>
-                            <option value="<?php echo $client_id_select; ?>"><?php echo $client_name; ?></option>
+                            <option value="<?= $client_id_select ?>"><?= $client_name ?></option>
 
                             <?php
                         }
@@ -141,11 +44,92 @@ ob_start();
 
         <?php } ?>
 
+        <div class="row g-2">
+            <div class="mb-3 col">
+                <label>Date <strong class="text-danger">*</strong></label>
+                <div class="input-group">
+                        <span class="input-group-text"><i class="fa fa-fw fa-calendar"></i></span>
+                    <input type="date" class="form-control" name="date" max="2999-12-31" value="<?= date("Y-m-d") ?>" required>
+                </div>
+            </div>
+
+            <div class="mb-3 col">
+                <label>Miles <strong class="text-danger">*</strong> / <span class="text-secondary">Roundtrip</span></label>
+                <div class="input-group">
+                        <span class="input-group-text"><i class="fa fa-fw fa-bicycle"></i></span>
+                    <input type="text" class="form-control" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,1}" name="miles" placeholder="0.0" required autofocus>
+                        <div class="input-group-text">
+                            <input class="form-check-input" type="checkbox" name="roundtrip" value="1">
+                        </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label>Location <strong class="text-danger">*</strong></label>
+            <div class="input-group">
+                    <span class="input-group-text"><i class="fa fa-fw fa-map-marker-alt"></i></span>
+                <input type="text" class="form-control" name="source" placeholder="Enter your starting location" maxlength="200" required>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <div class="input-group">
+                    <span class="input-group-text"><i class="fa fa-fw fa-arrow-right"></i></span>
+                <select class="form-select select2" name="destination" data-tags="true" data-placeholder="- Select or Enter a Destination -" required>
+                    <option value=""></option>
+                    <?php
+                    if ($client_id) {
+                        $sql_locations = mysqli_query($mysqli, "SELECT location_address, location_city, location_name, location_state, location_zip FROM locations WHERE location_archived_at IS NULL AND location_client_id = $client_id ORDER BY location_name ASC");
+                    while ($row = mysqli_fetch_assoc($sql_locations)) {
+                        $location_name = escapeHtml($row['location_name']);
+                        $location_address = escapeHtml($row['location_address']);
+                        $location_city = escapeHtml($row['location_city']);
+                        $location_state = escapeHtml($row['location_state']);
+                        $location_zip = escapeHtml($row['location_zip']);
+                        ?>
+                        <option><?= formatAddress($location_address, $location_city, $location_state, $location_zip, '', ' ') ?></option>
+                        <?php
+                    }
+                } ?>
+                </select>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label>Purpose <strong class="text-danger">*</strong></label>
+            <textarea rows="4" class="form-control" placeholder="Enter a purpose" name="purpose" maxlength="200" required></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label>Driver</label>
+            <div class="input-group">
+                    <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
+                <select class="form-select select2" name="user" required>
+                    <option value="">- Driver -</option>
+                    <?php
+
+                    $sql = mysqli_query($mysqli, "SELECT user_id, user_name FROM users
+                        WHERE user_type = 1 AND user_archived_at IS NULL ORDER BY user_name ASC"
+                    );
+                    while ($row = mysqli_fetch_assoc($sql)) {
+                        $user_id = intval($row['user_id']);
+                        $user_name = escapeHtml($row['user_name']);
+                        ?>
+                        <option <?php if ($session_user_id == $user_id) { echo "selected"; } ?> value="<?= $user_id ?>"><?= $user_name ?></option>
+
+                        <?php
+                    }
+                    ?>
+                </select>
+            </div>
+        </div>
+
     </div>
 
     <div class="modal-footer">
-        <button type="submit" name="add_trip" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Create</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="add_trip" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Create</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
 

@@ -1,43 +1,43 @@
 <?php
 
-require_once '../../../includes/modal_header.php';
+require_once '../../includes/modal_header.php';
 
 $provider_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT * FROM payment_providers WHERE payment_provider_id = $provider_id LIMIT 1");
+$sql = mysqli_query($mysqli, "SELECT payment_provider_account, payment_provider_expense_category,
+    payment_provider_expense_vendor, payment_provider_name, payment_provider_private_key,
+    payment_provider_public_key, payment_provider_threshold FROM payment_providers WHERE payment_provider_id = $provider_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
-$provider_name = nullable_htmlentities($row['payment_provider_name']);
-$public_key = nullable_htmlentities($row['payment_provider_public_key']);
-$private_key = nullable_htmlentities($row['payment_provider_private_key']);
+$provider_name = escapeHtml($row['payment_provider_name']);
+$public_key = escapeHtml($row['payment_provider_public_key']);
+$private_key = escapeHtml($row['payment_provider_private_key']);
 $account_id = intval($row['payment_provider_account']);
 $threshold = floatval($row['payment_provider_threshold']);
 $vendor_id = intval($row['payment_provider_expense_vendor']);
 $category_id = intval($row['payment_provider_expense_category']);
-$percent_fee = floatval($row['payment_provider_expense_percentage_fee']) * 100;
-$flat_fee = floatval($row['payment_provider_expense_flat_fee']);
 
-// Generate the HTML form content using output buffering.
 ob_start();
+
 ?>
+
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-credit-card mr-2"></i>Editing: <strong><?= $provider_name ?></strong></h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fa fa-fw fa-credit-card me-2"></i>Editing: <strong><?= $provider_name ?></strong></h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
     <input type="hidden" name="provider_id" value="<?= $provider_id ?>">
+    <input type="hidden" name="provider" value="<?= $provider_name ?>">
 
     <div class="modal-body">
 
         <ul class="nav nav-pills nav-justified mb-3">
             <li class="nav-item">
-                <a class="nav-link active" data-toggle="pill" href="#pills-details">Details</a>
+                <a class="nav-link active" data-bs-toggle="pill" href="#pills-details">Details</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-toggle="pill" href="#pills-expense">Expense</a>
+                <a class="nav-link" data-bs-toggle="pill" href="#pills-expense">Expense</a>
             </li>
         </ul>
 
@@ -47,40 +47,34 @@ ob_start();
 
             <div class="tab-pane fade show active" id="pills-details">
 
-                <div class="form-group">
+                <div class="mb-3">
                     <label>Publishable key <strong class="text-danger">*</strong></label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-eye"></i></span>
-                        </div>
-                        <input type="text" class="form-control" name="public_key" placeholder="Publishable API Key (pk_...)" value="<?= $public_key ?>">
+                        <input type="text" class="form-control" name="public_key" placeholder="Publishable API Key (pk_...)" maxlength="250" value="<?= $public_key ?>">
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div class="mb-3">
                     <label>Secret key <strong class="text-danger">*</strong></label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-key"></i></span>
-                        </div>
-                        <input type="text" class="form-control" name="private_key" placeholder="Secret API Key (sk_...)" value="<?= $private_key ?>">
+                        <input type="text" class="form-control" name="private_key" placeholder="Secret API Key (sk_...)" maxlength="250" value="<?= $private_key ?>">
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div class="mb-3">
                     <label>Income / Expense Account <strong class="text-danger">*</strong></label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-piggy-bank"></i></span>
-                        </div>
-                        <select class="form-control select2" name="account" required>
+                        <select class="form-select select2" name="account" required>
                             <option value="">- Select an Account -</option>
                             <?php
 
                             $sql = mysqli_query($mysqli, "SELECT account_id, account_name FROM accounts WHERE account_archived_at IS NULL ORDER BY account_name ASC");
                             while ($row = mysqli_fetch_assoc($sql)) {
                                 $account_id_select = intval($row['account_id']);
-                                $account_name = nullable_htmlentities($row['account_name']);
+                                $account_name = escapeHtml($row['account_name']);
                                 ?>
                                 <option <?php if ($account_id === $account_id_select) { echo "selected"; } ?> value="<?= $account_id_select ?>"><?= $account_name ?></option>
 
@@ -89,15 +83,14 @@ ob_start();
                             ?>
                         </select>
                     </div>
+                    <small class="form-text text-muted">Should have a seperate account created off the payment provider's name e.g. Stripe</small>
                 </div>
 
-                <div class="form-group">
+                <div class="mb-3">
                     <label>Threshold</label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-shopping-cart"></i></span>
-                        </div>
-                        <input type="text" class="form-control" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" name="threshold" placeholder="1000.00" value="<?php echo $threshold; ?>">
+                        <input type="text" class="form-control" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" name="threshold" placeholder="1000.00" value="<?= $threshold ?>">
                     </div>
                     <small class="form-text text-muted">Will not show as an option at Checkout if above this number</small>
                 </div>
@@ -106,20 +99,22 @@ ob_start();
 
             <div class="tab-pane fade" id="pills-expense">
 
-                <div class="form-group">
+                <div class="alert alert-info text-center">
+                    Payment Processing Fee Expenses get reconciled nighly via the cron
+                </div>
+
+                <div class="mb-3">
                     <label>Payment Provider Vendor <strong class="text-danger">*</strong></label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-building"></i></span>
-                        </div>
-                        <select class="form-control select2" name="expense_vendor" required>
+                        <select class="form-select select2" name="expense_vendor" required>
                             <option value="0">Expense Disabled</option>
                             <?php
 
                             $sql = mysqli_query($mysqli, "SELECT vendor_id, vendor_name FROM vendors WHERE vendor_client_id = 0 AND vendor_archived_at IS NULL ORDER BY vendor_name ASC");
                             while ($row = mysqli_fetch_assoc($sql)) {
                                 $vendor_id_select = intval($row['vendor_id']);
-                                $vendor_name = nullable_htmlentities($row['vendor_name']);
+                                $vendor_name = escapeHtml($row['vendor_name']);
                                 ?>
                                 <option <?php if ($vendor_id === $vendor_id_select) { echo "selected"; } ?>
                                     value="<?= $vendor_id_select ?>"><?= $vendor_name ?>
@@ -130,22 +125,21 @@ ob_start();
                             ?>
                         </select>
                     </div>
+                    <small class="form-text text-muted">Payment Privider name e.g. Stripe</small>
                 </div>
 
-                <div class="form-group">
+                <div class="mb-3">
                     <label>Expense Category <strong class="text-danger">*</strong></label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-list"></i></span>
-                        </div>
-                        <select class="form-control select2" name="expense_category" required>
+                        <select class="form-select select2" name="expense_category" required>
                             <option value="">- Select a Category -</option>
                             <?php
 
                             $sql_category = mysqli_query($mysqli, "SELECT category_id, category_name FROM categories WHERE category_type = 'Expense' AND category_archived_at IS NULL ORDER BY category_name ASC");
                             while ($row = mysqli_fetch_assoc($sql_category)) {
                                 $category_id_select = intval($row['category_id']);
-                                $category_name = nullable_htmlentities($row['category_name']);
+                                $category_name = escapeHtml($row['category_name']);
                                 ?>
                                 <option <?php if ($category_id === $category_id_select) { echo "selected"; } ?> value="<?= $category_id_select ?>"><?= $category_name ?></option>
 
@@ -153,42 +147,19 @@ ob_start();
                             }
                             ?>
                         </select>
-                        <div class="input-group-append">
                             <button class="btn btn-secondary ajax-modal" type="button"
                                 data-modal-url="../admin/modals/category/category_add.php?category=Expense">
                                 <i class="fas fa-plus"></i>
                             </button>
-                        </div>
                     </div>
-                </div>
-
-                <div class="form-group">
-                    <label>Percentage Fee to expense</label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <span class="input-group-text"><i class="fa fa-fw fa-percent"></i></span>
-                        </div>
-                        <input type="text" class="form-control" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" name="percentage_fee" value="<?php echo $percent_fee; ?>" placeholder="Enter Percentage">
-                    </div>
-                    <small class="form-text text-muted">See <a href="https://stripe.com/pricing" target="_blank">here <i class="fas fa-fw fa-external-link-alt"></i></a> for the latest Stripe Fees.</small>
-                </div>
-
-                <div class="form-group">
-                    <label>Flat Fee to expense</label>
-                    <div class="input-group">
-                        <div class="input-group-prepend">
-                            <span class="input-group-text"><i class="fa fa-fw fa-shopping-cart"></i></span>
-                        </div>
-                        <input type="text" class="form-control" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,3}" name="flat_fee" value="<?php echo $flat_fee; ?>" placeholder="0.030">
-                    </div>
-                    <small class="form-text text-muted">See <a href="https://stripe.com/pricing" target="_blank">here <i class="fas fa-fw fa-external-link-alt"></i></a> for the latest Stripe Fees.</small>
+                    <small class="form-text text-muted">Processing Fee, Credit Card Fee etc</small>
                 </div>
             </div>
         </div>
     </div>
     <div class="modal-footer">
-        <button type="submit" name="edit_payment_provider" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Save</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="edit_payment_provider" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Save</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
 

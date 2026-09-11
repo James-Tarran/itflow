@@ -42,14 +42,14 @@ if (!empty($ticket_id) && $reply !== '') {
     // a client-restricted key only to its own client's tickets.
     if ($ticket_row && ($client_id == 0 || $ticket_client_id == $client_id)) {
 
-        $ticket_prefix = sanitizeInput($ticket_row['ticket_prefix']);
+        $ticket_prefix = escapeSql($ticket_row['ticket_prefix']);
         $ticket_number = intval($ticket_row['ticket_number']);
-        $ticket_subject = sanitizeInput($ticket_row['ticket_subject']);
-        $ticket_status_name = sanitizeInput($ticket_row['ticket_status_name']);
-        $ticket_first_response_at = sanitizeInput($ticket_row['ticket_first_response_at']);
-        $contact_name = sanitizeInput($ticket_row['contact_name']);
-        $contact_email = sanitizeInput($ticket_row['contact_email']);
-        $url_key = sanitizeInput($ticket_row['ticket_url_key']);
+        $ticket_subject = escapeSql($ticket_row['ticket_subject']);
+        $ticket_status_name = escapeSql($ticket_row['ticket_status_name']);
+        $ticket_first_response_at = escapeSql($ticket_row['ticket_first_response_at']);
+        $contact_name = escapeSql($ticket_row['contact_name']);
+        $contact_email = escapeSql($ticket_row['contact_email']);
+        $url_key = escapeSql($ticket_row['ticket_url_key']);
 
         $insert_sql = mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = '$reply', ticket_reply_type = '$reply_type', ticket_reply_time_worked = '00:00:00', ticket_reply_by = 0, ticket_reply_ticket_id = $ticket_id");
 
@@ -62,18 +62,18 @@ if (!empty($ticket_id) && $reply !== '') {
                 mysqli_query($mysqli, "UPDATE tickets SET ticket_first_response_at = NOW() WHERE ticket_id = $ticket_id");
             }
 
-            logAction("Ticket", "Reply", "$ticket_prefix$ticket_number replied to via API ($api_key_name) and was a $reply_type reply", $ticket_client_id, $ticket_id);
-            logAction("API", "Success", "Replied to ticket $ticket_prefix$ticket_number via API ($api_key_name)", $ticket_client_id);
+            logAudit("Ticket", "Reply", "$ticket_prefix$ticket_number replied to via API ($api_key_name) and was a $reply_type reply", $ticket_client_id, $ticket_id);
+            logAudit("API", "Success", "Replied to ticket $ticket_prefix$ticket_number via API ($api_key_name)", $ticket_client_id);
 
             // Email the contact, mirroring agent/post/ticket.php's "Public + Email" flow
             if ($reply_type == 'Public' && $notify == 1 && !empty($config_smtp_provider) && filter_var($contact_email, FILTER_VALIDATE_EMAIL)) {
 
-                $config_base_url_esc = sanitizeInput($config_base_url);
-                $config_ticket_from_email_esc = sanitizeInput($config_ticket_from_email);
-                $config_ticket_from_name_esc = sanitizeInput($config_ticket_from_name);
+                $config_base_url_esc = escapeSql($config_base_url);
+                $config_ticket_from_email_esc = escapeSql($config_ticket_from_email);
+                $config_ticket_from_name_esc = escapeSql($config_ticket_from_name);
 
                 $company_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT company_name FROM companies WHERE company_id = 1"));
-                $company_name = sanitizeInput($company_row['company_name']);
+                $company_name = escapeSql($company_row['company_name']);
 
                 $subject = "Ticket update - [$ticket_prefix$ticket_number] - $ticket_subject";
                 $body = "<i style=\'color: #808080\'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Your ticket regarding $ticket_subject has been updated.<br><br>--------------------------------<br>$reply<br>--------------------------------<br><br>Ticket: $ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Status: $ticket_status_name<br>Portal: <a href=\'https://$config_base_url_esc/guest/guest_view_ticket.php?ticket_id=$ticket_id&url_key=$url_key\'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email_esc";

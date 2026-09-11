@@ -8,10 +8,7 @@ header("Content-Security-Policy: default-src 'self'");
 
 require_once "includes/inc_all.php";
 
-if ($session_contact_primary == 0 && !$session_contact_is_technical_contact) {
-    header("Location: post.php?logout");
-    exit();
-}
+enforceContactCan('contacts');
 
 $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_email, contact_primary, contact_technical, contact_billing FROM contacts WHERE contact_client_id = $session_client_id AND contacts.contact_archived_at IS NULL ORDER BY contact_created_at");
 ?>
@@ -21,7 +18,7 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
             <h3>Contacts</h3>
         </div>
         <div class="col offset-6">
-            <a href="contact_add.php" class="btn btn-primary" role="button"><i class="fas fa-plus mr-2"></i>New Contact</a>
+            <a href="contact_add.php" class="btn btn-primary" role="button"><i class="fas fa-plus me-2"></i>New Contact</a>
         </div>
     </div>
 
@@ -29,8 +26,11 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
 
         <div class="col-md-10">
 
-            <table class="table tabled-bordered border border-dark">
-                <thead class="thead-dark">
+            <?php if (mysqli_num_rows($contacts_sql) == 0) { ?>
+                <?= portalEmptyState('There are no contacts on this account yet.') ?>
+            <?php } else { ?>
+            <table class="table table-bordered border border-dark">
+                <thead class="table-dark">
                 <tr>
                     <th>Name</th>
                     <th>Email</th>
@@ -42,8 +42,8 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
                 <?php
                 while ($row = mysqli_fetch_assoc($contacts_sql)) {
                     $contact_id = intval($row['contact_id']);
-                    $contact_name = nullable_htmlentities($row['contact_name']);
-                    $contact_email = nullable_htmlentities($row['contact_email']);
+                    $contact_name = escapeHtml($row['contact_name']);
+                    $contact_email = escapeHtml($row['contact_email']);
                     $contact_primary = intval($row['contact_primary']);
                     $contact_technical = intval($row['contact_technical']);
                     $contact_billing = intval($row['contact_billing']);
@@ -62,15 +62,16 @@ $contacts_sql = mysqli_query($mysqli, "SELECT contact_id, contact_name, contact_
                     ?>
 
                     <tr>
-                        <td><a href="contact_edit.php?id=<?php echo $contact_id?>"><?php echo $contact_name ?></a></td>
-                        <td><?php echo $contact_email; ?></td>
-                        <td><?php echo $contact_roles_display ?></td>
+                        <td><a href="contact_edit.php?id=<?= $contact_id ?>"><?= $contact_name ?></a></td>
+                        <td><?= $contact_email ?></td>
+                        <td><?= $contact_roles_display ?></td>
                     </tr>
 
                 <?php } ?>
 
                 </tbody>
             </table>
+            <?php } ?>
 
         </div>
 

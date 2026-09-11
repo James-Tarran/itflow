@@ -20,8 +20,8 @@ if (!empty($name) && !empty($client_id)) {
         $insert_id = mysqli_insert_id($mysqli);
 
         // Logging
-        logAction("Vendor", "Create", "$name via API ($api_key_name)", $client_id, $insert_id);
-        logAction("API", "Success", "Created vendor $name via API ($api_key_name)", $client_id);
+        logAudit("Vendor", "Create", "$name via API ($api_key_name)", $client_id, $insert_id);
+        logAudit("API", "Success", "Created vendor $name via API ($api_key_name)", $client_id);
     }
 
 }

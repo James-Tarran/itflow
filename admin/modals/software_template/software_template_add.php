@@ -1,6 +1,6 @@
 <?php
 
-require_once '../../../includes/modal_header.php';
+require_once '../../includes/modal_header.php';
 
 $license_types_array = array (
     'Device',
@@ -17,53 +17,43 @@ ob_start();
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-cube mr-2"></i>New License Template</h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fa fa-fw fa-cube me-2"></i>New License Template</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
     <div class="modal-body">
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Template Name <strong class="text-danger">*</strong></label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-cube"></i></span>
-                </div>
                 <input type="text" class="form-control" name="name" placeholder="Software name" maxlength="200" required autofocus>
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Version</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-cube"></i></span>
-                </div>
                 <input type="text" class="form-control" name="version" placeholder="Software version" maxlength="200">
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Description</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-angle-right"></i></span>
-                </div>
                 <input type="text" class="form-control" name="description" placeholder="Short description">
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Type <strong class="text-danger">*</strong></label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-tag"></i></span>
-                </div>
-                <select class="form-control select2" name="type" required>
+                <select class="form-select select2" name="type" required>
                     <option value="">- Select Type -</option>
                     <<?php
                     $sql_software_types_select = mysqli_query($mysqli, "
@@ -73,7 +63,7 @@ ob_start();
                         ORDER BY category_order ASC, category_name ASC
                     ");
                     while ($row = mysqli_fetch_assoc($sql_software_types_select)) {
-                        $software_type_select = nullable_htmlentities($row['category_name']);
+                        $software_type_select = escapeHtml($row['category_name']);
                         ?>
                         <option><?= $software_type_select ?></option>
                     <?php } ?>
@@ -81,16 +71,14 @@ ob_start();
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>License Type</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-cube"></i></span>
-                </div>
-                <select class="form-control select2" name="license_type">
+                <select class="form-select select2" name="license_type">
                     <option value="">- Select a License Type -</option>
                     <?php foreach($license_types_array as $license_type) { ?>
-                        <option><?php echo $license_type; ?></option>
+                        <option><?= $license_type ?></option>
                     <?php } ?>
                 </select>
             </div>
@@ -100,8 +88,8 @@ ob_start();
 
     </div>
     <div class="modal-footer">
-        <button type="submit" name="add_software_template" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Create</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="add_software_template" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Create</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
 

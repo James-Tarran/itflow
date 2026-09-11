@@ -8,10 +8,7 @@ header("Content-Security-Policy: default-src 'self'");
 
 require_once "includes/inc_all.php";
 
-if ($session_contact_primary == 0 && !$session_contact_is_technical_contact) {
-    header("Location: post.php?logout");
-    exit();
-}
+enforceContactCan('itdoc');
 
 $domains_sql = mysqli_query($mysqli, "SELECT domain_id, domain_name, domain_expire FROM domains WHERE domain_client_id = $session_client_id AND domain_archived_at IS NULL ORDER BY domain_expire ASC");
 ?>
@@ -21,8 +18,11 @@ $domains_sql = mysqli_query($mysqli, "SELECT domain_id, domain_name, domain_expi
 
         <div class="col-md-10">
 
-            <table class="table tabled-bordered border border-dark">
-                <thead class="thead-dark">
+            <?php if (mysqli_num_rows($domains_sql) == 0) { ?>
+                <?= portalEmptyState('There are no domains on this account yet.') ?>
+            <?php } else { ?>
+            <table class="table table-bordered border border-dark">
+                <thead class="table-dark">
                 <tr>
                     <th>Domain Name</th>
                     <th>Expiry</th>
@@ -32,20 +32,21 @@ $domains_sql = mysqli_query($mysqli, "SELECT domain_id, domain_name, domain_expi
 
                 <?php
                 while ($row = mysqli_fetch_assoc($domains_sql)) {
-                    $domain_name = nullable_htmlentities($row['domain_name']);
-                    $domain_expire = nullable_htmlentities($row['domain_expire']);
+                    $domain_name = escapeHtml($row['domain_name']);
+                    $domain_expire = escapeHtml($row['domain_expire']);
 
                     ?>
 
                     <tr>
-                        <td><?php echo $domain_name; ?></td>
-                        <td><?php echo $domain_expire; ?></td>
+                        <td><?= $domain_name ?></td>
+                        <td><?= $domain_expire ?></td>
                     </tr>
 
                 <?php } ?>
 
                 </tbody>
             </table>
+            <?php } ?>
 
         </div>
 

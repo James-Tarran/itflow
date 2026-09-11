@@ -4,36 +4,34 @@ require_once '../../../includes/modal_header.php';
 
 $document_id = intval($_GET['document_id']);
 
-$sql = mysqli_query($mysqli, "SELECT * FROM documents
+$sql = mysqli_query($mysqli, "SELECT document_client_id, document_name FROM documents
     WHERE document_id = $document_id
     LIMIT 1
 ");
 
 $row = mysqli_fetch_assoc($sql);
-$document_name = nullable_htmlentities($row['document_name']);
+$document_name = escapeHtml($row['document_name']);
 $client_id = intval($row['document_client_id']);
+
+enforceClientAccess();
 
 ob_start();
 
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-user mr-2"></i>Link Contact to <strong><?= $document_name ?></strong></h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fa fa-fw fa-user me-2"></i>Link Contact to <strong><?= $document_name ?></strong></h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
     <input type="hidden" name="document_id" value="<?= $document_id ?>">
     <div class="modal-body">
 
-        <div class="form-group">
+        <div class="mb-3">
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                </div>
-                <select class="form-control select2" name="contact_id">
+                <select class="form-select select2" name="contact_id">
                     <option value="">- Select a Contact -</option>
                     <?php
                     $sql_contacts_select = mysqli_query($mysqli, "
@@ -49,7 +47,7 @@ ob_start();
                     ");
                     while ($row = mysqli_fetch_assoc($sql_contacts_select)) {
                         $contact_id = intval($row['contact_id']);
-                        $contact_name = nullable_htmlentities($row['contact_name']);
+                        $contact_name = escapeHtml($row['contact_name']);
 
                         ?>
                         <option value="<?= $contact_id ?>"><?= $contact_name ?></option>
@@ -62,8 +60,8 @@ ob_start();
         </div>
     </div>
     <div class="modal-footer">
-        <button type="submit" name="link_contact_to_document" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Link Contact</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="link_contact_to_document" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Link Contact</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
 

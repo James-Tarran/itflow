@@ -16,12 +16,18 @@ if (isset($_GET['invoice_id'])) {
 
     $sql = mysqli_query(
         $mysqli,
-        "SELECT * FROM invoices
+        "SELECT client_currency_code, client_id, client_name, client_net_terms, client_website,
+            contact_email, contact_extension, contact_mobile, contact_mobile_country_code,
+            contact_phone, contact_phone_country_code, invoice_amount, invoice_category_id,
+            invoice_created_at, invoice_credit_amount, invoice_currency_code, invoice_date,
+            invoice_discount_amount, invoice_due, invoice_id, invoice_note, invoice_number,
+            invoice_prefix, invoice_scope, invoice_status, invoice_url_key, location_address,
+            location_city, location_country, location_state, location_zip FROM invoices
         LEFT JOIN clients ON invoice_client_id = client_id
         LEFT JOIN contacts ON client_id = contact_client_id AND contact_primary = 1
         LEFT JOIN locations ON client_id = location_client_id AND location_primary = 1
         WHERE invoice_id = $invoice_id
-        $access_permission_query
+        " . clientScopeSql('invoice_client_id') . "
         LIMIT 1"
     );
 
@@ -31,7 +37,7 @@ if (isset($_GET['invoice_id'])) {
         } else {
             $backlink_append = '';
         }
-        echo "<h1 class='text-secondary pt-5' style='text-align: center'>There is no Invoice here<br><small><a href='invoices.php$backlink_append'><i class='fas fa-arrow-left mr-2'></i>Back to Invoices</a></small></h1>";
+        echo "<h1 class='text-secondary pt-5' style='text-align: center'>There is no Invoice here<br><small><a href='invoices.php$backlink_append'><i class='fas fa-arrow-left me-2'></i>Back to Invoices</a></small></h1>";
         require_once "../includes/footer.php";
 
         exit();
@@ -39,35 +45,35 @@ if (isset($_GET['invoice_id'])) {
 
     $row = mysqli_fetch_assoc($sql);
     $invoice_id = intval($row['invoice_id']);
-    $invoice_prefix = nullable_htmlentities($row['invoice_prefix']);
+    $invoice_prefix = escapeHtml($row['invoice_prefix']);
     $invoice_number = intval($row['invoice_number']);
-    $invoice_scope = nullable_htmlentities($row['invoice_scope']);
-    $invoice_status = nullable_htmlentities($row['invoice_status']);
-    $invoice_date = nullable_htmlentities($row['invoice_date']);
-    $invoice_due = nullable_htmlentities($row['invoice_due']);
+    $invoice_scope = escapeHtml($row['invoice_scope']);
+    $invoice_status = escapeHtml($row['invoice_status']);
+    $invoice_date = escapeHtml($row['invoice_date']);
+    $invoice_due = escapeHtml($row['invoice_due']);
     $invoice_amount = floatval($row['invoice_amount']);
     $invoice_discount = floatval($row['invoice_discount_amount']);
     $invoice_credit = floatval($row['invoice_credit_amount']);
-    $invoice_currency_code = nullable_htmlentities($row['invoice_currency_code']);
-    $invoice_note = nullable_htmlentities($row['invoice_note']);
-    $invoice_url_key = nullable_htmlentities($row['invoice_url_key']);
-    $invoice_created_at = nullable_htmlentities($row['invoice_created_at']);
+    $invoice_currency_code = escapeHtml($row['invoice_currency_code']);
+    $invoice_note = escapeHtml($row['invoice_note']);
+    $invoice_url_key = escapeHtml($row['invoice_url_key']);
+    $invoice_created_at = escapeHtml($row['invoice_created_at']);
     $category_id = intval($row['invoice_category_id']);
     $client_id = intval($row['client_id']);
-    $client_name = nullable_htmlentities($row['client_name']);
-    $location_address = nullable_htmlentities($row['location_address']);
-    $location_city = nullable_htmlentities($row['location_city']);
-    $location_state = nullable_htmlentities($row['location_state']);
-    $location_zip = nullable_htmlentities($row['location_zip']);
-    $location_country = nullable_htmlentities($row['location_country']);
-    $contact_email = nullable_htmlentities($row['contact_email']);
-    $contact_phone_country_code = nullable_htmlentities($row['contact_phone_country_code']);
-    $contact_phone = nullable_htmlentities(formatPhoneNumber($row['contact_phone'], $contact_phone_country_code));
-    $contact_extension = nullable_htmlentities($row['contact_extension']);
-    $contact_mobile_country_code = nullable_htmlentities($row['contact_mobile_country_code']);
-    $contact_mobile = nullable_htmlentities(formatPhoneNumber($row['contact_mobile'], $contact_mobile_country_code));
-    $client_website = nullable_htmlentities($row['client_website']);
-    $client_currency_code = nullable_htmlentities($row['client_currency_code']);
+    $client_name = escapeHtml($row['client_name']);
+    $location_address = escapeHtml($row['location_address']);
+    $location_city = escapeHtml($row['location_city']);
+    $location_state = escapeHtml($row['location_state']);
+    $location_zip = escapeHtml($row['location_zip']);
+    $location_country = escapeHtml($row['location_country']);
+    $contact_email = escapeHtml($row['contact_email']);
+    $contact_phone_country_code = escapeHtml($row['contact_phone_country_code']);
+    $contact_phone = escapeHtml(formatPhoneNumber($row['contact_phone'], $contact_phone_country_code));
+    $contact_extension = escapeHtml($row['contact_extension']);
+    $contact_mobile_country_code = escapeHtml($row['contact_mobile_country_code']);
+    $contact_mobile = escapeHtml(formatPhoneNumber($row['contact_mobile'], $contact_mobile_country_code));
+    $client_website = escapeHtml($row['client_website']);
+    $client_currency_code = escapeHtml($row['client_currency_code']);
     $client_net_terms = intval($row['client_net_terms']);
     if ($client_net_terms == 0) {
         $client_net_terms = $config_default_net_terms;
@@ -77,30 +83,44 @@ if (isset($_GET['invoice_id'])) {
     $tab_title = $row['client_name'];
     $page_title = "{$row['invoice_prefix']}{$row['invoice_number']}";
 
-    $sql = mysqli_query($mysqli, "SELECT * FROM companies WHERE company_id = 1");
+    $sql = mysqli_query($mysqli, "SELECT company_address, company_city, company_country, company_email, company_id, company_logo,
+        company_name, company_phone, company_phone_country_code, company_state, company_tax_id,
+        company_website, company_zip FROM companies WHERE company_id = 1");
     $row = mysqli_fetch_assoc($sql);
     $company_id = intval($row['company_id']);
-    $company_name = nullable_htmlentities($row['company_name']);
-    $company_country = nullable_htmlentities($row['company_country']);
-    $company_address = nullable_htmlentities($row['company_address']);
-    $company_city = nullable_htmlentities($row['company_city']);
-    $company_state = nullable_htmlentities($row['company_state']);
-    $company_zip = nullable_htmlentities($row['company_zip']);
-    $company_phone_country_code = nullable_htmlentities($row['company_phone_country_code']);
-    $company_phone = nullable_htmlentities(formatPhoneNumber($row['company_phone'], $company_phone_country_code));
-    $company_email = nullable_htmlentities($row['company_email']);
-    $company_website = nullable_htmlentities($row['company_website']);
-    $company_tax_id = nullable_htmlentities($row['company_tax_id']);
+    $company_name = escapeHtml($row['company_name']);
+    $company_country = escapeHtml($row['company_country']);
+    $company_address = escapeHtml($row['company_address']);
+    $company_city = escapeHtml($row['company_city']);
+    $company_state = escapeHtml($row['company_state']);
+    $company_zip = escapeHtml($row['company_zip']);
+    $company_phone_country_code = escapeHtml($row['company_phone_country_code']);
+    $company_phone = escapeHtml(formatPhoneNumber($row['company_phone'], $company_phone_country_code));
+    $company_email = escapeHtml($row['company_email']);
+    $company_website = escapeHtml($row['company_website']);
+    $company_tax_id = escapeHtml($row['company_tax_id']);
     if ($config_invoice_show_tax_id && !empty($company_tax_id)) {
         $company_tax_id_display = "Tax ID: $company_tax_id";
     } else {
         $company_tax_id_display = "";
     }
-    $company_logo = nullable_htmlentities($row['company_logo']);
+    $company_logo = escapeHtml($row['company_logo']);
 
-    $sql_history = mysqli_query($mysqli, "SELECT * FROM history WHERE history_invoice_id = $invoice_id ORDER BY history_id DESC");
+    // Must use the same rule as the Send Email picker in
+    // modals/invoice/invoice_email.php, or the button offers a modal that then
+    // reports there is nobody to send to.
+    $row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT COUNT(contact_id) AS emailable_contacts FROM contacts
+        WHERE contact_client_id = $client_id
+        AND contact_archived_at IS NULL
+        AND contact_email IS NOT NULL
+        AND contact_email != ''
+        " . documentContactFilterSql('invoice')));
+    $emailable_contacts = intval($row['emailable_contacts']);
 
-    $sql_payments = mysqli_query($mysqli, "SELECT * FROM payments, accounts WHERE payment_account_id = account_id AND payment_invoice_id = $invoice_id ORDER BY payments.payment_id DESC");
+    $sql_history = mysqli_query($mysqli, "SELECT history_created_at, history_description, history_status FROM history WHERE history_invoice_id = $invoice_id ORDER BY history_id DESC");
+
+    $sql_payments = mysqli_query($mysqli, "SELECT account_name, payment_amount, payment_currency_code, payment_method, payment_date, payment_id,
+        payment_reference FROM payments, accounts WHERE payment_account_id = account_id AND payment_invoice_id = $invoice_id ORDER BY payments.payment_id DESC");
 
     $sql_tickets = mysqli_query($mysqli, "
         SELECT
@@ -121,8 +141,7 @@ if (isset($_GET['invoice_id'])) {
     //Get billable, and unbilled tickets to add to invoice
     $sql_tickets_billable = mysqli_query(
         $mysqli, "
-        SELECT
-            *
+        SELECT 1
         FROM
             tickets
         WHERE
@@ -161,35 +180,11 @@ if (isset($_GET['invoice_id'])) {
     $invoice_badge_color = getInvoiceBadgeColor($invoice_status);
 
     //Product autocomplete
-    $products_sql = mysqli_query($mysqli, "
-        SELECT
-            CONCAT(product_code, ' - ', product_name) AS label,
-            product_name,
-            product_code,
-            product_type AS type,
-            product_description AS description,
-            product_price AS price,
-            product_tax_id AS tax,
-            tax_percent,
-            product_id AS prod_id,
-            COALESCE(SUM(product_stock.stock_qty), 0) AS available_stock
-        FROM products
-        LEFT JOIN product_stock ON product_id = stock_product_id
-        LEFT JOIN taxes ON product_tax_id = tax_id
-        WHERE product_archived_at IS NULL
-        GROUP BY product_id
-    ");
-
-    if (mysqli_num_rows($products_sql) > 0) {
-        while ($row = mysqli_fetch_assoc($products_sql)) {
-            $products[] = $row;
-        }
-        $json_products = json_encode($products);
-    }
+    $json_products = getProductsForAutocomplete($mysqli);
 
     // Saved Payment Methods
     $sql_saved_payment_methods = mysqli_query($mysqli, "
-        SELECT * FROM client_saved_payment_methods
+        SELECT 1 FROM client_saved_payment_methods
         LEFT JOIN payment_providers
             ON client_saved_payment_methods.saved_payment_provider_id = payment_providers.payment_provider_id
         WHERE saved_payment_client_id = $client_id
@@ -203,15 +198,15 @@ if (isset($_GET['invoice_id'])) {
             <a href="invoices.php">All Invoices</a>
         </li>
         <li class="breadcrumb-item">
-            <a href="invoices.php?client_id=<?php echo $client_id; ?>"><?php echo $client_name; ?> Invoices</a>
+            <a href="invoices.php?client_id=<?= $client_id ?>"><?= $client_name ?> Invoices</a>
         </li>
-        <li class="breadcrumb-item active"><?php echo "$invoice_prefix$invoice_number"; ?></li>
+        <li class="breadcrumb-item active"><?= "$invoice_prefix$invoice_number" ?></li>
         <?php if (isset($invoice_overdue)) { ?>
-            <span class="p-2 ml-2 badge badge-danger"><?php echo $invoice_overdue; ?></span>
+            <span class="p-2 ms-2 badge bg-danger"><?= $invoice_overdue ?></span>
         <?php } ?>
     </ol>
 
-    <div class="card">
+    <div class="card mb-3">
 
             <div class="card-header d-print-none">
 
@@ -221,18 +216,27 @@ if (isset($_GET['invoice_id'])) {
                         <?php if (lookupUserPermission("module_sales") >= 2) { ?>
 
                             <?php if ($invoice_status == 'Draft') { ?>
-                                <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">
-                                    <i class="fas fa-fw fa-paper-plane mr-2"></i>Send
+                                <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-fw fa-paper-plane me-2"></i>Send
                                 </button>
                                 <div class="dropdown-menu">
-                                    <?php if (!empty($config_smtp_host) && !empty($contact_email)) { ?>
-                                        <a class="dropdown-item" href="post.php?email_invoice=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                            <i class="fas fa-fw fa-paper-plane mr-2"></i>Send Email
+                                    <?php if (!empty($config_smtp_provider) && $emailable_contacts > 0) { ?>
+                                        <button type="submit" class="dropdown-item confirm-link" form="quickSendInvoice"
+                                            data-confirm-title="Send this invoice now?"
+                                            data-confirm-text="It goes to the default contacts without opening the picker."
+                                            data-confirm-button="Send"
+                                            name="invoice_id" value="<?= $invoice_id ?>">
+                                            <i class="fas fa-fw fa-bolt me-2"></i>Quick Send
+                                        </button>
+                                        <a class="dropdown-item ajax-modal" href="#"
+                                            data-modal-url="modals/invoice/invoice_email.php?invoice_id=<?= $invoice_id ?>">
+                                            <i class="fas fa-fw fa-paper-plane me-2"></i>Send Email<span class="text-muted">...</span>
                                         </a>
                                         <div class="dropdown-divider"></div>
                                     <?php } ?>
-                                    <a class="dropdown-item" href="post.php?mark_invoice_sent=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                        <i class="fas fa-fw fa-check mr-2"></i>Mark Sent
+                                    <a class="dropdown-item ajax-modal" href="#"
+                                        data-modal-url="modals/invoice/invoice_mark_sent.php?invoice_id=<?= $invoice_id ?>">
+                                        <i class="fas fa-fw fa-check me-2"></i>Mark Sent
                                     </a>
                                 </div>
                             <?php } ?>
@@ -240,12 +244,12 @@ if (isset($_GET['invoice_id'])) {
                             <?php if ($invoice_status !== 'Paid' && $invoice_status !== 'Cancelled' && $invoice_status !== 'Draft' && $invoice_status !== 'Non-Billable' && $invoice_amount != 0) { ?>
 
                                 <div class="btn-group">
-                                    <button type="button" class="btn btn-success ajax-modal" data-modal-url="modals/payment/payment_add.php?id=<?= $invoice_id ?>"><i class="fa fa-fw fa-credit-card mr-2"></i>Add Payment</button>
+                                    <button type="button" class="btn btn-success ajax-modal" data-modal-url="modals/payment/payment_add.php?id=<?= $invoice_id ?>"><i class="fa fa-fw fa-credit-card me-2"></i>Add Payment</button>
 
                                     <?php if (mysqli_num_rows($sql_saved_payment_methods) > 0 && ($invoice_status === 'Sent' || $invoice_status === 'Viewed')) { ?>
-                                    <button type="button" class="btn btn-success dropdown-toggle dropdown-toggle-split" data-toggle="dropdown"></button>
+                                    <button type="button" class="btn btn-success dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
                                     <div class="dropdown-menu">
-                                        <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/payment/payment_saved_method_add.php?id=<?= $invoice_id ?>"><i class="fas fa-fw fa-wallet mr-2"></i>Pay with Saved Card</a>
+                                        <a class="dropdown-item ajax-modal" href="#" data-modal-url="modals/payment/payment_saved_method_add.php?id=<?= $invoice_id ?>"><i class="fas fa-fw fa-wallet me-2"></i>Pay with Saved Card</a>
                                     </div>
                                     <?php } ?>
 
@@ -264,50 +268,58 @@ if (isset($_GET['invoice_id'])) {
 
                     <div class="col-4">
 
-                        <div class="dropdown dropleft text-center float-right">
-                            <button class="btn btn-secondary" type="button" data-toggle="dropdown">
+                        <div class="dropdown dropstart text-center float-end">
+                            <button class="btn btn-secondary" type="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-ellipsis-v"></i>
                             </button>
                             <div class="dropdown-menu">
                                 <a class="dropdown-item ajax-modal" href="#"
                                     data-modal-url="modals/invoice/invoice_edit.php?id=<?= $invoice_id ?>">
-                                    <i class="fa fa-fw fa-edit text-secondary mr-2"></i>Edit
+                                    <i class="fa fa-fw fa-edit text-secondary me-2"></i>Edit
                                 </a>
                                 <a class="dropdown-item ajax-modal" href="#"
                                     data-modal-url="modals/invoice/invoice_copy.php?id=<?= $invoice_id ?>">
-                                    <i class="fa fa-fw fa-copy text-secondary mr-2"></i>Copy
+                                    <i class="fa fa-fw fa-copy text-secondary me-2"></i>Copy
                                 </a>
                                 <a class="dropdown-item ajax-modal" href="#"
                                     data-modal-url="modals/invoice/invoice_recurring_add.php?invoice_id=<?= $invoice_id ?>">
-                                    <i class="fa fa-fw fa-sync-alt text-secondary mr-2"></i>Recurring
+                                    <i class="fa fa-fw fa-sync-alt text-secondary me-2"></i>Recurring
                                 </a>
                                 <div class="dropdown-divider"></div>
                                 <a class="dropdown-item" href="#" onclick="window.print();">
-                                    <i class="fa fa-fw fa-print text-secondary mr-2"></i>Print
+                                    <i class="fa fa-fw fa-print text-secondary me-2"></i>Print
                                 </a>
                                 <a class="dropdown-item" href="post.php?export_invoice_pdf=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" target="_blank">
-                                    <i class="fa fa-fw fa-download text-secondary mr-2"></i>Download PDF
+                                    <i class="fa fa-fw fa-download text-secondary me-2"></i>Download PDF
                                 </a>
                                 <a class="dropdown-item" href="post.php?export_invoice_packing_slip=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>" target="_blank">
-                                    <i class="fa fa-fw fa-box-open text-secondary mr-2"></i>Packing Slip
+                                    <i class="fa fa-fw fa-box-open text-secondary me-2"></i>Packing Slip
                                 </a>
-                                <?php if (!empty($config_smtp_provider) && !empty($contact_email)) { ?>
-                                    <a class="dropdown-item" href="post.php?email_invoice=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                        <i class="fa fa-fw fa-paper-plane text-secondary mr-2"></i>Send Email
+                                <?php if (!empty($config_smtp_provider) && $emailable_contacts > 0) { ?>
+                                    <button type="submit" class="dropdown-item confirm-link" form="quickSendInvoice"
+                                        data-confirm-title="Send this invoice now?"
+                                        data-confirm-text="It goes to the default contacts without opening the picker."
+                                        data-confirm-button="Send"
+                                        name="invoice_id" value="<?= $invoice_id ?>">
+                                        <i class="fa fa-fw fa-bolt text-secondary me-2"></i>Quick Send
+                                    </button>
+                                    <a class="dropdown-item ajax-modal" href="#"
+                                        data-modal-url="modals/invoice/invoice_email.php?invoice_id=<?= $invoice_id ?>">
+                                        <i class="fa fa-fw fa-paper-plane text-secondary me-2"></i>Send Email<span class="text-muted">...</span>
                                     </a>
                                 <?php } ?>
-                                <a class="dropdown-item clipboardjs" href="#" data-clipboard-text="https://<?= $config_base_url ?>/guest/guest_view_invoice.php?invoice_id=<?php echo "$invoice_id&url_key=$invoice_url_key"; ?>">
-                                    <i class="fa fa-fw fa-copy text-secondary mr-2"></i>Copy Guest URL
+                                <a class="dropdown-item clipboardjs" href="#" data-clipboard-text="https://<?= $config_base_url ?>/guest/guest_view_invoice.php?invoice_id=<?= "$invoice_id&url_key=$invoice_url_key" ?>">
+                                    <i class="fa fa-fw fa-copy text-secondary me-2"></i>Copy Guest URL
                                 </a>
                                 <?php if ($invoice_status !== 'Cancelled' && $invoice_status !== 'Paid' && $invoice_status !== 'Non-Billable') { ?>
                                     <div class="dropdown-divider"></div>
                                     <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?cancel_invoice=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                        <i class="fa fa-fw fa-times mr-2"></i>Cancel
+                                        <i class="fa fa-fw fa-times me-2"></i>Cancel
                                     </a>
                                 <?php } ?>
                                 <div class="dropdown-divider"></div>
                                 <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_invoice=<?= $invoice_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
-                                    <i class="fas fa-fw fa-trash mr-2"></i>Delete
+                                    <i class="fas fa-fw fa-trash me-2"></i>Delete
                                 </a>
                             </div>
                         </div>
@@ -323,39 +335,38 @@ if (isset($_GET['invoice_id'])) {
             <div class="row mb-3">
                 <?php if (file_exists("../uploads/settings/$company_logo")) { ?>
                 <div class="col-sm-2">
-                    <img class="img-fluid" src="<?php echo "../uploads/settings/$company_logo"; ?>" alt="Company logo">
+                    <img class="img-fluid" src="<?= "../uploads/settings/$company_logo" ?>" alt="Company logo">
                 </div>
                 <?php } ?>
                 <div class="col-sm-6 <?php if (!file_exists("../uploads/settings/$company_logo")) { echo "col-sm-8"; } ?>">
                     <ul class="list-unstyled">
-                        <li><h4><strong><?php echo $company_name; ?></strong></h4></li>
-                        <li><?php echo $company_address; ?></li>
-                        <li><?php echo "$company_city $company_state $company_zip, $company_country"; ?></li>
-                        <li><?php echo "$company_email | $company_phone"; ?></li>
-                        <li><?php echo $company_website; ?></li>
+                        <li><h4><strong><?= $company_name ?></strong></h4></li>
+                        <li><?= formatAddress($company_address, $company_city, $company_state, $company_zip, $company_country, '<br>') ?></li>
+                        <li><?= "$company_email | $company_phone" ?></li>
+                        <li><?= $company_website ?></li>
                         <?php if ($company_tax_id_display) { ?>
-                        <li><?php echo $company_tax_id_display; ?></li>
+                        <li><?= $company_tax_id_display ?></li>
                         <?php } ?>
                     </ul>
                 </div>
 
                 <div class="col-sm-4">
-                    <h3 class="text-right"><strong>INVOICE</strong></h3>
-                    <h5 class="badge badge-<?php echo $invoice_badge_color; ?> p-2 float-right">
-                        <?php echo "$invoice_status"; ?>
+                    <h3 class="text-end"><strong>INVOICE</strong></h3>
+                    <h5 class="badge text-bg-<?= $invoice_badge_color ?> p-2 float-end">
+                        <?= "$invoice_status" ?>
                     </h5>
                     <table class="table table-sm table-borderless">
                         <tr>
                             <th>Invoice #:</th>
-                            <td class="text-right"><?php echo "$invoice_prefix$invoice_number"; ?></td>
+                            <td class="text-end"><?= "$invoice_prefix$invoice_number" ?></td>
                         </tr>
                         <tr>
                             <th>Date:</th>
-                            <td class="text-right"><?php echo $invoice_date; ?></td>
+                            <td class="text-end"><?= $invoice_date ?></td>
                         </tr>
                         <tr>
                             <th>Due:</th>
-                            <td class="text-right"><?php echo $invoice_due; ?></td>
+                            <td class="text-end"><?= $invoice_due ?></td>
                         </tr>
                     </table>
                 </div>
@@ -365,30 +376,30 @@ if (isset($_GET['invoice_id'])) {
                 <div class="col">
                     <h6><strong>Bill To:</strong></h6>
                     <ul class="list-unstyled mb-0">
-                        <li><?php echo $client_name; ?></li>
-                        <li><?php echo $location_address; ?></li>
-                        <li><?php echo "$location_city $location_state $location_zip, $location_country"; ?></li>
-                        <li><?php echo "$contact_email | $contact_phone $contact_extension"; ?></li>
+                        <li><?= $client_name ?></li>
+                        <li><?= formatAddress($location_address, $location_city, $location_state, $location_zip, $location_country, '<br>') ?></li>
+                        <li><?= "$contact_email | $contact_phone $contact_extension" ?></li>
                     </ul>
                 </div>
             </div>
 
-            <?php $sql_invoice_items = mysqli_query($mysqli, "SELECT * FROM invoice_items WHERE item_invoice_id = $invoice_id ORDER BY item_order ASC"); ?>
+            <?php $sql_invoice_items = mysqli_query($mysqli, "SELECT item_created_at, item_description, item_id, item_name, item_price, item_product_id,
+                item_quantity, item_tax, item_tax_id, item_total FROM invoice_items WHERE item_invoice_id = $invoice_id ORDER BY item_order ASC"); ?>
 
             <div class="row mb-3">
                 <div class="col-md-12">
                     <div class="card">
                         <div class="table-responsive">
                             <table class="table table-hover mb-0" id="items">
-                                <thead class="bg-light">
+                                <thead class="table-light">
                                 <tr>
                                     <th class="d-print-none"></th>
                                     <th>Item</th>
                                     <th>Description</th>
                                     <th class="text-center">Qty</th>
-                                    <th class="text-right">Unit Price</th>
-                                    <th class="text-right">Tax</th>
-                                    <th class="text-right">Amount</th>
+                                    <th class="text-end">Unit Price</th>
+                                    <th class="text-end">Tax</th>
+                                    <th class="text-end">Amount</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -399,19 +410,19 @@ if (isset($_GET['invoice_id'])) {
 
                                 while ($row = mysqli_fetch_assoc($sql_invoice_items)) {
                                     $item_id = intval($row['item_id']);
-                                    $item_name = nullable_htmlentities($row['item_name']);
-                                    $item_description = nullable_htmlentities($row['item_description']);
+                                    $item_name = escapeHtml($row['item_name']);
+                                    $item_description = escapeHtml($row['item_description']);
                                     $item_quantity = floatval($row['item_quantity']);
                                     $item_price = floatval($row['item_price']);
                                     $item_tax = floatval($row['item_tax']);
                                     $item_total = floatval($row['item_total']);
-                                    $item_created_at = nullable_htmlentities($row['item_created_at']);
+                                    $item_created_at = escapeHtml($row['item_created_at']);
                                     $tax_id = intval($row['item_tax_id']);
                                     $item_product_id = intval($row['item_product_id']);
                                     $total_tax = $item_tax + $total_tax;
                                     $sub_total = $item_price * $item_quantity + $sub_total;
                                     ?>
-                                    <tr data-item-id="<?php echo $item_id; ?>">
+                                    <tr data-item-id="<?= $item_id ?>">
                                         <td class="d-print-none">
                                             <?php if ($invoice_status !== "Paid" && $invoice_status !== "Cancelled") { ?>
 
@@ -421,28 +432,28 @@ if (isset($_GET['invoice_id'])) {
                                                     </button>
 
                                                     <div class="dropdown">
-                                                        <button class="btn btn-sm btn-light" type="button" data-toggle="dropdown">
+                                                        <button class="btn btn-sm btn-light" type="button" data-bs-toggle="dropdown">
                                                             <i class="fas fa-ellipsis-v"></i>
                                                         </button>
                                                         <div class="dropdown-menu">
                                                             <a class="dropdown-item ajax-modal" href="#"
                                                                 data-modal-url="modals/invoice/invoice_item_edit.php?id=<?= $item_id ?>">
-                                                                <i class="fa fa-fw fa-edit mr-2"></i>Edit
+                                                                <i class="fa fa-fw fa-edit me-2"></i>Edit
                                                             </a>
                                                             <div class="dropdown-divider"></div>
-                                                            <a class="dropdown-item text-danger confirm-link" href="post.php?delete_invoice_item=<?= $item_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-fw fa-trash mr-2"></i>Delete</a>
+                                                            <a class="dropdown-item text-danger confirm-link" href="post.php?delete_invoice_item=<?= $item_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-fw fa-trash me-2"></i>Delete</a>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                             <?php } ?>
                                         </td>
-                                        <td><?php echo $item_name; ?></td>
-                                        <td><?php echo nl2br($item_description); ?></td>
-                                        <td class="text-center"><?php echo number_format($item_quantity, 2); ?></td>
-                                        <td class="text-right"><?php echo numfmt_format_currency($currency_format, $item_price, $invoice_currency_code); ?></td>
-                                        <td class="text-right"><?php echo numfmt_format_currency($currency_format, $item_tax, $invoice_currency_code); ?></td>
-                                        <td class="text-right"><?php echo numfmt_format_currency($currency_format, $item_total, $invoice_currency_code); ?></td>
+                                        <td><?= $item_name ?></td>
+                                        <td><?= nl2br($item_description) ?></td>
+                                        <td class="text-center"><?= number_format($item_quantity, 2) ?></td>
+                                        <td class="text-end"><?= numfmt_format_currency($currency_format, $item_price, $invoice_currency_code) ?></td>
+                                        <td class="text-end"><?= numfmt_format_currency($currency_format, $item_tax, $invoice_currency_code) ?></td>
+                                        <td class="text-end"><?= numfmt_format_currency($currency_format, $item_total, $invoice_currency_code) ?></td>
                                     </tr>
                                     <?php
                                 }
@@ -451,11 +462,11 @@ if (isset($_GET['invoice_id'])) {
                                     <form action="post.php" method="post" autocomplete="off">
                                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                         <input type="hidden" name="invoice_id" value="<?= $invoice_id ?>">
-                                        <input type="hidden" id="product_id" name="product_id" value="<?= $item_product_id ?? 0 ?>">
-                                        <input type="hidden" name="item_order" value="<?php echo mysqli_num_rows($sql_invoice_items) + 1; ?>">
+                                        <input type="hidden" id="product_id" name="product_id" value="0">
+                                        <input type="hidden" name="item_order" value="<?= mysqli_num_rows($sql_invoice_items) + 1 ?>">
                                         <td></td>
                                         <td>
-                                            <input type="text" class="form-control" id="name" name="name" placeholder="Item" required>
+                                            <input type="text" class="form-control" id="name" name="name" placeholder="Item" maxlength="200" required>
                                         </td>
                                         <td>
                                             <textarea class="form-control" rows="2" id="desc" name="description" placeholder="Enter a Description"></textarea>
@@ -464,19 +475,19 @@ if (isset($_GET['invoice_id'])) {
                                             <input type="text" inputmode="decimal" pattern="[0-9]*\.?[0-9]{0,2}" class="form-control" style="text-align: center;" id="qty" name="qty" placeholder="Qty">
                                         </td>
                                         <td>
-                                            <input type="text" class="form-control" inputmode="decimal" pattern="-?[0-9]*\.?[0-9]{0,2}" style="text-align: right;" id="price" name="price" placeholder="Price (<?php echo $invoice_currency_code; ?>)">
+                                            <input type="text" class="form-control" inputmode="decimal" pattern="-?[0-9]*\.?[0-9]{0,2}" style="text-align: right;" id="price" name="price" placeholder="Price (<?= $invoice_currency_code ?>)">
                                         </td>
                                         <td>
-                                            <select class="form-control select2" name="tax_id" id="tax" required>
+                                            <select class="form-select select2" name="tax_id" id="tax" required>
                                                 <option value="0">No Tax</option>
                                                 <?php
-                                                $taxes_sql = mysqli_query($mysqli, "SELECT * FROM taxes WHERE tax_archived_at IS NULL ORDER BY tax_name ASC");
+                                                $taxes_sql = mysqli_query($mysqli, "SELECT tax_id, tax_name, tax_percent FROM taxes WHERE tax_archived_at IS NULL ORDER BY tax_name ASC");
                                                 while ($row = mysqli_fetch_assoc($taxes_sql)) {
                                                     $tax_id = intval($row['tax_id']);
-                                                    $tax_name = nullable_htmlentities($row['tax_name']);
+                                                    $tax_name = escapeHtml($row['tax_name']);
                                                     $tax_percent = floatval($row['tax_percent']);
                                                     ?>
-                                                    <option value="<?php echo $tax_id; ?>"><?php echo "$tax_name $tax_percent%"; ?></option>
+                                                    <option value="<?= $tax_id ?>"><?= "$tax_name $tax_percent%" ?></option>
                                                     <?php
                                                 }
                                                 ?>
@@ -500,14 +511,22 @@ if (isset($_GET['invoice_id'])) {
                     <div class="card">
                         <div class="card-header text-bold">
                             Notes:
-                            <div class="card-tools d-print-none">
-                                <a href="#" class="btn btn-light btn-tool" data-toggle="modal" data-target="#invoiceNoteModal">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                            </div>
+                            <span class="d-print-none" data-note-status-for="invoiceNotes"></span>
                         </div>
-                        <div class="card-body">
-                            <?php echo nl2br($invoice_note); ?>
+                        <div class="card-body p-2">
+<?php if (lookupUserPermission("module_sales") >= 2) { ?>
+                            <textarea class="form-control itflow-inline-note d-print-none" rows="6"
+                                id="invoiceNotes"
+                                placeholder="Enter some notes"
+                                data-endpoint="invoice_set_notes"
+                                data-id-field="invoice_id"
+                                data-id="<?= $invoice_id ?>"
+                                data-csrf="<?= $_SESSION['csrf_token'] ?>"><?= $invoice_note ?></textarea>
+<?php } else { ?>
+                            <div class="d-print-none"><?= nl2br($invoice_note) ?></div>
+<?php } ?>
+                            <!-- Printed output must be plain text, not a form control -->
+                            <div class="d-none d-print-block"><?= nl2br($invoice_note) ?></div>
                         </div>
                     </div>
                 </div>
@@ -517,14 +536,14 @@ if (isset($_GET['invoice_id'])) {
 
                         <tr>
                             <td>Subtotal:</td>
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $sub_total, $invoice_currency_code); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $sub_total, $invoice_currency_code) ?></td>
                         </tr>
                         <?php
                         if ($invoice_discount > 0) {
                             ?>
                             <tr>
                                 <td>Discount:</td>
-                                <td class="text-right">-<?php echo numfmt_format_currency($currency_format, $invoice_discount, $invoice_currency_code); ?></td>
+                                <td class="text-end">-<?= numfmt_format_currency($currency_format, $invoice_discount, $invoice_currency_code) ?></td>
                             </tr>
                         <?php
                         }
@@ -534,7 +553,7 @@ if (isset($_GET['invoice_id'])) {
                             ?>
                             <tr>
                                 <td>Credit:</td>
-                                <td class="text-right">-<?php echo numfmt_format_currency($currency_format, $invoice_credit, $invoice_currency_code); ?></td>
+                                <td class="text-end">-<?= numfmt_format_currency($currency_format, $invoice_credit, $invoice_currency_code) ?></td>
                             </tr>
                         <?php
                         }
@@ -542,43 +561,43 @@ if (isset($_GET['invoice_id'])) {
                         <?php if ($total_tax > 0) { ?>
                             <tr>
                                 <td>Tax:</td>
-                                <td class="text-right"><?php echo numfmt_format_currency($currency_format, $total_tax, $invoice_currency_code); ?></td>
+                                <td class="text-end"><?= numfmt_format_currency($currency_format, $total_tax, $invoice_currency_code) ?></td>
                             </tr>
                         <?php } ?>
                         <tr>
                             <td>Total:</td>
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $invoice_amount, $invoice_currency_code) ?></td>
                         </tr>
                         <?php
                         if ($amount_paid > 0) { ?>
                             <tr>
                                 <td><div class="text-success">Paid:</div></td>
-                                <td class="text-right text-success"><?php echo numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code); ?></td>
+                                <td class="text-end text-success"><?= numfmt_format_currency($currency_format, $amount_paid, $invoice_currency_code) ?></td>
                             </tr>
                         <?php } ?>
 
                         <tr class="h5 text-bold">
                             <td>Balance:</td>
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $balance, $invoice_currency_code); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $balance, $invoice_currency_code) ?></td>
                         </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
             <hr class="d-none d-print-block mt-5">
-            <div class="d-none d-print-block text-center text-secondary"><?php echo nl2br(nullable_htmlentities($config_invoice_footer)); ?></div>
+            <div class="d-none d-print-block text-center text-secondary"><?= nl2br(escapeHtml($config_invoice_footer)) ?></div>
         </div>
     </div>
     <div class="row d-print-none mb-3">
         <div class="col-sm">
-            <div class="card">
+            <div class="card mb-3">
                 <div class="card-header text-bold">
-                    <i class="fa fa-history mr-2"></i>History
+                    <i class="fa fa-history me-2"></i>History
                     <div class="card-tools">
-                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
                             <i class="fas fa-minus"></i>
                         </button>
-                        <button type="button" class="btn btn-tool" data-card-widget="remove">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-remove">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -597,14 +616,14 @@ if (isset($_GET['invoice_id'])) {
 
                         while ($row = mysqli_fetch_assoc($sql_history)) {
                             $history_created_at = $row['history_created_at'];
-                            $history_status = nullable_htmlentities($row['history_status']);
-                            $history_description = nullable_htmlentities($row['history_description']);
+                            $history_status = escapeHtml($row['history_status']);
+                            $history_description = nl2br(escapeHtml($row['history_description']));
 
                             ?>
                             <tr>
-                                <td><?php echo $history_created_at; ?></td>
-                                <td><?php echo $history_status; ?></td>
-                                <td><?php echo $history_description; ?></td>
+                                <td><?= $history_created_at ?></td>
+                                <td><?= $history_status ?></td>
+                                <td><?= $history_description ?></td>
                             </tr>
                             <?php
                         }
@@ -616,14 +635,14 @@ if (isset($_GET['invoice_id'])) {
             </div>
         </div>
         <div class="col-sm d-print-none <?php if (mysqli_num_rows($sql_payments) == 0) { echo "d-none"; } ?>">
-            <div class="card">
+            <div class="card mb-3">
                 <div class="card-header text-bold">
-                    <i class="fa fa-credit-card mr-2"></i>Payments
+                    <i class="fa fa-credit-card me-2"></i>Payments
                     <div class="card-tools">
-                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
                             <i class="fas fa-minus"></i>
                         </button>
-                        <button type="button" class="btn btn-tool" data-card-widget="remove">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-remove">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -634,10 +653,12 @@ if (isset($_GET['invoice_id'])) {
                             <thead>
                                 <tr>
                                     <th>Date</th>
-                                    <th class="text-right">Amount</th>
+                                    <th class="text-end">Amount</th>
                                     <th>Reference</th>
                                     <th>Account</th>
-                                    <th></th>
+                                    <?php if (lookupUserPermission("module_sales") >= 3 && lookupUserPermission("module_financial") >= 3) { ?>
+                                        <th></th>
+                                    <?php } ?>
                                 </tr>
                             </thead>
                             <tbody>
@@ -645,19 +666,27 @@ if (isset($_GET['invoice_id'])) {
 
                             while ($row = mysqli_fetch_assoc($sql_payments)) {
                                 $payment_id = intval($row['payment_id']);
-                                $payment_date = nullable_htmlentities($row['payment_date']);
+                                $payment_date = escapeHtml($row['payment_date']);
                                 $payment_amount = floatval($row['payment_amount']);
-                                $payment_currency_code = nullable_htmlentities($row['payment_currency_code']);
-                                $payment_reference = nullable_htmlentities($row['payment_reference']);
-                                $account_name = nullable_htmlentities($row['account_name']);
+                                $payment_currency_code = escapeHtml($row['payment_currency_code']);
+                                $payment_method = escapeHtml($row['payment_method']);
+                                $payment_reference = escapeHtml($row['payment_reference']);
+                                $account_name = escapeHtml($row['account_name']);
 
                                 ?>
                                 <tr>
-                                    <td><?php echo $payment_date; ?></td>
-                                    <td class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_amount, $payment_currency_code); ?></td>
-                                    <td><?php echo $payment_reference; ?></td>
-                                    <td><?php echo $account_name; ?></td>
-                                    <td class="text-center"><a class="btn btn-light text-danger confirm-link" href="post.php?delete_payment=<?= $payment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-times"></i></a></td>
+                                    <td><?= $payment_date ?></td>
+                                    <td class="text-end"><?= numfmt_format_currency($currency_format, $payment_amount, $payment_currency_code) ?></td>
+                                    <td><?= $payment_reference ?></td>
+                                    <td><?= $account_name ?></td>
+                                    <?php if (lookupUserPermission("module_sales") >= 3 && lookupUserPermission("module_financial") >= 3) { ?>
+                                        <td class="text-center">
+                                            <?php if ($payment_method == "Stripe") { ?>
+                                                <a class="btn btn-light text-warning confirm-link" title="Refund Payment" href="post.php?refund_payment_stripe=<?= $payment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-undo"></i></a>
+                                            <?php } ?>
+                                            <a class="btn btn-light text-danger confirm-link" title="Delete Payment" href="post.php?delete_payment=<?= $payment_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>"><i class="fa fa-times"></i></a>
+                                        </td>
+                                    <?php } ?>
                                 </tr>
                                 <?php
                             }
@@ -671,23 +700,23 @@ if (isset($_GET['invoice_id'])) {
         <div class="col-sm d-print-none <?php if (mysqli_num_rows($sql_tickets) == 0) { echo "d-none"; } ?>">
             <div class="card">
                 <div class="card-header text-bold">
-                    <i class="fa fa-life-ring mr-2"></i>Tickets
+                    <i class="fa fa-life-ring me-2"></i>Tickets
                     <div class="card-tools">
                         <?php if (mysqli_num_rows($sql_tickets_billable) > 0) { ?>
-                        <a class="btn btn-tool" href="#" data-toggle="modal" data-target="#addTicketModal">
+                        <a class="btn btn-tool" href="#" data-bs-toggle="modal" data-bs-target="#addTicketModal">
                             <i class="fas fa-plus"></i>
                         </a>
                         <?php } ?>
 
 
-                        <a class="btn btn-tool" href="tickets.php?client_id=<?php echo $client_id; ?>">
+                        <a class="btn btn-tool" href="tickets.php?client_id=<?= $client_id ?>">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
-                        <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-collapse">
                             <i class="fas fa-minus"></i>
 
                         </button>
-                        <button type="button" class="btn btn-tool" data-card-widget="remove">
+                        <button type="button" class="btn btn-tool" data-lte-toggle="card-remove">
                             <i class="fas fa-times"></i>
 
                         </button>
@@ -701,7 +730,7 @@ if (isset($_GET['invoice_id'])) {
                                 <tr>
                                     <th>Date</th>
                                     <th>Subject</th>
-                                    <th class="text-right">Time Worked</th>
+                                    <th class="text-end">Time Worked</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -709,15 +738,15 @@ if (isset($_GET['invoice_id'])) {
 
                             while ($row = mysqli_fetch_assoc($sql_tickets)) {
                                 $ticket_id = intval($row['ticket_id']);
-                                $ticket_created_at = nullable_htmlentities($row['ticket_created_at']);
-                                $ticket_subject = nullable_htmlentities($row['ticket_subject']);
+                                $ticket_created_at = escapeHtml($row['ticket_created_at']);
+                                $ticket_subject = escapeHtml($row['ticket_subject']);
                                 $ticket_total_time_worked = floatval($row['total_time_worked']);
 
                                 ?>
                                 <tr>
-                                    <td><?php echo $ticket_created_at; ?></td>
-                                    <td><?php echo $ticket_subject; ?></td>
-                                    <td class="text-right"><?php echo $ticket_total_time_worked; ?></td>
+                                    <td><?= $ticket_created_at ?></td>
+                                    <td><?= $ticket_subject ?></td>
+                                    <td class="text-end"><?= $ticket_total_time_worked ?></td>
                                 </tr>
                                 <?php
                             }
@@ -728,82 +757,48 @@ if (isset($_GET['invoice_id'])) {
                 </div>
             </div>
         </div>
+
+        <?php if (lookupUserPermission("module_sales") >= 2 && !empty($config_smtp_provider) && $emailable_contacts > 0) { ?>
+            <?php
+            /*
+             * One hidden form for the page, targeted by the Quick Send buttons via
+             * their form="" attribute, so a button can sit inside a dropdown
+             * without needing a form of its own. The button carries the id as its
+             * own name/value, which a submit button contributes to the submission.
+             *
+             * Must stay inside this block - $emailable_contacts is only set on the
+             * path where the document was found.
+             */
+            ?>
+            <form id="quickSendInvoice" action="post.php" method="post" class="d-none">
+                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                <input type="hidden" name="email_invoice" value="1">
+                <input type="hidden" name="quick_send" value="1">
+            </form>
+        <?php } ?>
     <?php
     include_once "modals/invoice/invoice_add_ticket.php";
-    include_once "modals/invoice/invoice_note.php";
 
 }
 
+?>
+
+<script src="/js/inline_notes.js"></script>
+
+<?php
 require_once "../includes/footer.php";
 
 ?>
 
-<!-- JSON Autocomplete / type ahead -->
-<link rel="stylesheet" href="../plugins/jquery-ui/jquery-ui.min.css">
-<script src="../plugins/jquery-ui/jquery-ui.min.js"></script>
+<!-- Product autocomplete for the add-item row -->
+<script src="/js/product_autocomplete.js"></script>
 <script>
-
-$(function() {
-
-    var availableProducts = <?php echo $json_products ?? '[]'?>;
-
-    $("#name").autocomplete({
-        minLength: 1,
-        delay: 0,
-        source: function(request, response) {
-            var term = $.ui.autocomplete.escapeRegex(request.term.toLowerCase());
-            var matcher = new RegExp(term, "i");
-            var matches = $.grep(availableProducts, function(item) {
-                return matcher.test(item.label) || matcher.test(item.product_name) || matcher.test(item.product_code);
-            });
-            response(matches);
-        },
-        select: function (event, ui) {
-            $("#name").val(ui.item.label);
-            $("#desc").val(ui.item.description);
-            $("#qty").val(1);
-            $("#price").val(ui.item.price);
-            $("#tax").val(ui.item.tax);
-            $("#product_id").val(ui.item.prod_id);
-            return false;
-        }
-    });
-
-    // Keep it simple: default jQuery UI look, just richer content
-    $("#name").autocomplete("instance")._renderItem = function(ul, item) {
-        var typeText = item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1).toLowerCase() : "";
-        var showStock = (typeText.toLowerCase() !== "service");
-
-        var taxText = (item.tax_percent != null) ? (parseFloat(item.tax_percent) + "%") : "No tax";
-        var priceText = (item.price != null && item.price !== "") ? String(item.price) : "";
-
-        var infoLeft =
-            "<div class='d-flex justify-content-between align-items-start'>" +
-                "<div class='flex-fill pr-2'>" +
-                    "<div class='font-weight-bold'>" + (item.label || "") +
-                        (typeText ? " <small class='text-muted'>(" + typeText + ")</small>" : "") +
-                    "</div>" +
-                    "<div class='small text-muted'>" + (item.description || "") + "</div>" +
-                    "<div class='mt-1'>" +
-                        "<span class='badge badge-secondary mr-1'>Tax: " + taxText + "</span>" +
-                        (showStock ? "<span class='badge " + ((item.available_stock ?? 0) > 0 ? "badge-success" : "badge-danger") + "'>Stock: " + (item.available_stock ?? 0) + "</span>" : "") +
-                    "</div>" +
-                "</div>" +
-                "<div class='text-right'>" +
-                    "<div class='font-weight-bold'>" + priceText + "</div>" +
-                "</div>" +
-            "</div>";
-
-        // Use the jQuery UI wrapper so default hover/focus styles apply
-        return $("<li>")
-            .append($("<div class='ui-menu-item-wrapper'>").append(infoLeft))
-            .appendTo(ul);
-    };
+document.addEventListener('DOMContentLoaded', function () {
+    initProductAutocomplete(<?= $json_products ?? '[]' ?>);
 });
-
 </script>
 
-<script src="../plugins/SortableJS/Sortable.min.js"></script>
+<script src="../libs/SortableJS/Sortable.min.js"></script>
 <script>
 new Sortable(document.querySelector('table#items tbody'), {
     handle: '.drag-handle',
@@ -815,10 +810,10 @@ new Sortable(document.querySelector('table#items tbody'), {
             order: index
         }));
 
-        $.post('ajax.php', {
+        itflowPostForm('ajax.php', {
             update_invoice_items_order: true,
             csrf_token: '<?= $_SESSION['csrf_token'] ?>',
-            invoice_id: <?php echo $invoice_id; ?>,
+            invoice_id: <?= $invoice_id ?>,
             positions: positions
         });
     }

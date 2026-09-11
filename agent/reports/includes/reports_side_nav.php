@@ -1,58 +1,63 @@
 <!-- Main Sidebar Container -->
-<aside class="main-sidebar sidebar-dark-primary d-print-none">
+<aside class="app-sidebar shadow d-print-none" data-bs-theme="dark">
 
-    <a class="pb-1 mt-1 brand-link" href="/agent/<?php echo $config_start_page ?>">
-        <p class="h5"><i class="nav-icon fas fa-arrow-left ml-3 mr-2"></i>
-            <span class="brand-text ">Back | <strong>Reports</strong>
-        </p>
-    </a>
+    <div class="sidebar-brand">
+        <a class="brand-link" href="/agent/<?= $config_start_page ?>">
+            <i class="fas fa-arrow-left me-2"></i>
+            <span class="brand-text h5 mb-0">Back | <strong>Reports</strong></span>
+        </a>
+    </div>
 
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar-wrapper">
 
         <!-- Sidebar Menu -->
         <nav>
 
-            <ul class="nav nav-pills nav-sidebar flex-column mt-2" data-widget="treeview" data-accordion="false">
+            <ul class="nav nav-pills sidebar-menu flex-column mt-2" data-lte-toggle="treeview" data-accordion="false">
 
-                <li class="nav-header">FINANCIAL</li>
                 <?php if ($config_module_enable_accounting == 1 && lookupUserPermission("module_financial") >= 1) { ?>
+                    <li class="nav-header">INCOME</li>
                     <li class="nav-item">
                         <a href="/agent/reports/income_summary.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "income_summary.php") { echo "active"; } ?>">
-                            <i class="far fa-circle nav-icon"></i>
+                            <i class="fas fa-hand-holding-usd nav-icon"></i>
                             <p>Income</p>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="/agent/reports/income_by_client.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "income_by_client.php") { echo "active"; } ?>">
                             <i class="far fa-user nav-icon"></i>
-                            <p>Income By Client</p>
+                            <p>Income by Client</p>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="/agent/reports/recurring_by_client.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "recurring_by_client.php") { echo "active"; } ?>">
                             <i class="fa fa-sync nav-icon"></i>
-                            <p>Recurring Income By Client</p>
+                            <p>Recurring Income by Client</p>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/agent/reports/clients_with_balance.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "clients_with_balance.php") { echo "active"; } ?>">
+                        <a href="/agent/reports/outstanding_balances.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "outstanding_balances.php") { echo "active"; } ?>">
                             <i class="fa fa-exclamation-triangle nav-icon"></i>
-                            <p>Clients with a Balance</p>
+                            <p>Outstanding Balances</p>
                         </a>
                     </li>
+
+                    <li class="nav-header">EXPENSES</li>
                     <li class="nav-item">
                         <a href="/agent/reports/expense_summary.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "expense_summary.php") { echo "active"; } ?>">
-                            <i class="far fa-credit-card nav-icon"></i>
+                            <i class="fas fa-shopping-cart nav-icon"></i>
                             <p>Expense</p>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="/agent/reports/expense_by_vendor.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "expense_by_vendor.php") { echo "active"; } ?>">
                             <i class="far fa-building nav-icon"></i>
-                            <p>Expense By Vendor</p>
+                            <p>Expense by Vendor</p>
                         </a>
                     </li>
+
+                    <li class="nav-header">STATEMENTS</li>
                     <li class="nav-item">
                         <a href="/agent/reports/tax_summary.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "tax_summary.php") { echo "active"; } ?>">
                             <i class="fas fa-percent nav-icon"></i>
@@ -65,23 +70,37 @@
                             <p>Profit & Loss</p>
                         </a>
                     </li>
+                <?php } // End financial reports IF statement ?>
+
+                <?php if (($config_module_enable_accounting == 1 && lookupUserPermission("module_financial") >= 1) || ($config_module_enable_ticketing && lookupUserPermission("module_support") >= 1)) { ?>
+                    <li class="nav-header">TIME</li>
+                <?php } ?>
+                <?php if ($config_module_enable_accounting == 1 && lookupUserPermission("module_financial") >= 1) { ?>
                     <li class="nav-item">
                         <a href="/agent/reports/tickets_unbilled.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "tickets_unbilled.php") { echo "active"; } ?>">
-                            <i class="nav-icon fas fa-life-ring"></i>
+                            <i class="nav-icon fas fa-hourglass-half"></i>
                             <p>Unbilled Tickets</p>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="/agent/reports/client_ticket_time_detail.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "client_ticket_time_detail.php") { echo "active"; } ?>">
-                            <i class="nav-icon fas fa-life-ring"></i>
-                            <p>Client Time Detail Audit</p>
+                            <i class="nav-icon fas fa-stopwatch"></i>
+                            <p>Time Detail by Client</p>
                         </a>
                     </li>
+                <?php } ?>
+                <?php if ($config_module_enable_ticketing && lookupUserPermission("module_support") >= 1) { ?>
+                    <li class="nav-item">
+                        <a href="/agent/reports/time_by_tech.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "time_by_tech.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-user-clock"></i>
+                            <p>Time by Technician</p>
+                        </a>
+                    </li>
+                <?php } ?>
 
-                <?php } // End financial reports IF statement ?>
-
-
-                <li class="nav-header">TECHNICAL</li>
+                <?php if (($config_module_enable_ticketing && lookupUserPermission("module_support") >= 1) || lookupUserPermission("module_credential") >= 1) { ?>
+                    <li class="nav-header">TECHNICAL</li>
+                <?php } ?>
                 <?php  if ($config_module_enable_ticketing && lookupUserPermission("module_support") >= 1) { ?>
                     <li class="nav-item">
                         <a href="/agent/reports/ticket_summary.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "ticket_summary.php") { echo "active"; } ?>">
@@ -98,9 +117,16 @@
                     </li>
 
                     <li class="nav-item">
-                        <a href="/agent/reports/time_by_tech.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "time_by_tech.php") { echo "active"; } ?>">
-                            <i class="nav-icon fas fa-life-ring"></i>
-                            <p>Time by Technician</p>
+                        <a href="/agent/reports/sla_summary.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "sla_summary.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-stopwatch"></i>
+                            <p>SLA Summary</p>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a href="/agent/reports/sla_by_client.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "sla_by_client.php") { echo "active"; } ?>">
+                            <i class="nav-icon fas fa-stopwatch"></i>
+                            <p>SLA by Client</p>
                         </a>
                     </li>
                 <?php } ?>
@@ -108,21 +134,21 @@
                     <li class="nav-item">
                         <a href="/agent/reports/credential_rotation.php" class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == "credential_rotation.php") { echo "active"; } ?>">
                             <i class="nav-icon fas fa-key"></i>
-                            <p>Credential rotation</p>
+                            <p>Credential Rotation</p>
                         </a>
                     </li>
                 <?php } ?>
 
                 <?php
-                $sql_custom_links = mysqli_query($mysqli, "SELECT * FROM custom_links
+                $sql_custom_links = mysqli_query($mysqli, "SELECT custom_link_icon, custom_link_name, custom_link_new_tab, custom_link_uri FROM custom_links
                     WHERE custom_link_location = 5 AND custom_link_archived_at IS NULL
                     ORDER BY custom_link_order ASC, custom_link_name ASC"
                 );
 
                 while ($row = mysqli_fetch_assoc($sql_custom_links)) {
-                    $custom_link_name = nullable_htmlentities($row['custom_link_name']);
-                    $custom_link_uri = sanitize_url($row['custom_link_uri']);
-                    $custom_link_icon = nullable_htmlentities($row['custom_link_icon']);
+                    $custom_link_name = escapeHtml($row['custom_link_name']);
+                    $custom_link_uri = escapeUrl($row['custom_link_uri']);
+                    $custom_link_icon = escapeHtml($row['custom_link_icon']);
                     $custom_link_new_tab = intval($row['custom_link_new_tab']);
                     if ($custom_link_new_tab == 1) {
                         $target = "target='_blank' rel='noopener noreferrer'";
@@ -133,10 +159,10 @@
                     ?>
 
                 <li class="nav-item">
-                    <a href="<?php echo $custom_link_uri; ?>" <?php echo $target; ?> class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == basename($custom_link_uri)) { echo "active"; } ?>">
-                        <i class="fas fa-<?php echo $custom_link_icon; ?> nav-icon"></i>
-                        <p><?php echo $custom_link_name; ?></p>
-                        <i class="fas fa-angle-right nav-icon float-right"></i>
+                    <a href="<?= $custom_link_uri ?>" <?= $target ?> class="nav-link <?php if (basename($_SERVER["PHP_SELF"]) == basename($custom_link_uri)) { echo "active"; } ?>">
+                        <i class="fas fa-<?= $custom_link_icon ?> nav-icon"></i>
+                        <p><?= $custom_link_name ?></p>
+                        <i class="fas fa-angle-right nav-icon float-end"></i>
                     </a>
                 </li>
 

@@ -1,9 +1,9 @@
 /*M!999999\- enable the sandbox mode */ 
--- MariaDB dump 10.19  Distrib 10.11.14-MariaDB, for debian-linux-gnu (x86_64)
+-- MariaDB dump 10.19  Distrib 10.11.18-MariaDB, for debian-linux-gnu (x86_64)
 --
 -- Host: localhost    Database: itflow_dev
 -- ------------------------------------------------------
--- Server version	10.11.14-MariaDB-0+deb12u2
+-- Server version	10.11.18-MariaDB-0+deb12u1
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -50,6 +50,7 @@ CREATE TABLE `ai_models` (
   `ai_model_name` varchar(200) NOT NULL,
   `ai_model_prompt` text DEFAULT NULL,
   `ai_model_use_case` varchar(200) DEFAULT NULL,
+  `ai_model_temperature` decimal(3,2) DEFAULT NULL,
   `ai_model_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `ai_model_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `ai_model_ai_provider_id` int(11) NOT NULL,
@@ -91,7 +92,7 @@ CREATE TABLE `api_keys` (
   `api_key_decrypt_hash` varchar(200) NOT NULL,
   `api_key_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `api_key_expire` date NOT NULL,
-  `api_key_client_id` int(11) NOT NULL DEFAULT 0,
+  `api_key_user_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`api_key_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -328,7 +329,8 @@ CREATE TABLE `assets` (
   `asset_location_id` int(11) NOT NULL DEFAULT 0,
   `asset_contact_id` int(11) NOT NULL DEFAULT 0,
   `asset_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`asset_id`)
+  PRIMARY KEY (`asset_id`),
+  KEY `asset_client_id` (`asset_client_id`,`asset_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -352,6 +354,31 @@ CREATE TABLE `auth_logs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `backups`
+--
+
+DROP TABLE IF EXISTS `backups`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `backups` (
+  `backup_id` int(11) NOT NULL AUTO_INCREMENT,
+  `backup_type` varchar(20) NOT NULL DEFAULT 'full',
+  `backup_file_name` varchar(255) NOT NULL,
+  `backup_size` bigint(20) NOT NULL DEFAULT 0,
+  `backup_sha256` varchar(64) DEFAULT NULL,
+  `backup_status` varchar(20) NOT NULL DEFAULT 'Pending',
+  `backup_error` text DEFAULT NULL,
+  `backup_source` varchar(20) NOT NULL DEFAULT 'Manual',
+  `backup_created_by` varchar(200) DEFAULT NULL,
+  `backup_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `backup_completed_at` datetime DEFAULT NULL,
+  `backup_downloaded_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`backup_id`),
+  KEY `backup_status_created` (`backup_status`,`backup_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `budget`
 --
 
@@ -368,6 +395,23 @@ CREATE TABLE `budget` (
   `budget_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `budget_category_id` int(11) NOT NULL,
   PRIMARY KEY (`budget_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `business_holidays`
+--
+
+DROP TABLE IF EXISTS `business_holidays`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `business_holidays` (
+  `holiday_id` int(11) NOT NULL AUTO_INCREMENT,
+  `holiday_date` date NOT NULL,
+  `holiday_name` varchar(200) NOT NULL,
+  `holiday_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`holiday_id`),
+  UNIQUE KEY `holiday_date` (`holiday_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -408,6 +452,7 @@ CREATE TABLE `calendar_events` (
   `event_description` longtext DEFAULT NULL,
   `event_start` datetime NOT NULL,
   `event_end` datetime DEFAULT NULL,
+  `event_all_day` tinyint(1) NOT NULL DEFAULT 0,
   `event_repeat` varchar(200) DEFAULT NULL,
   `event_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `event_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
@@ -417,6 +462,7 @@ CREATE TABLE `calendar_events` (
   `event_calendar_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`event_id`),
   KEY `event_calendar_id` (`event_calendar_id`),
+  KEY `event_client_id` (`event_client_id`),
   CONSTRAINT `calendar_events_ibfk_1` FOREIGN KEY (`event_calendar_id`) REFERENCES `calendars` (`calendar_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -432,10 +478,35 @@ CREATE TABLE `calendars` (
   `calendar_id` int(11) NOT NULL AUTO_INCREMENT,
   `calendar_name` varchar(200) NOT NULL,
   `calendar_color` varchar(200) NOT NULL,
+  `calendar_feed_key` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `calendar_feed_busy_only` tinyint(1) NOT NULL DEFAULT 0,
+  `calendar_feed_created_at` datetime DEFAULT NULL,
+  `calendar_feed_accessed_at` datetime DEFAULT NULL,
   `calendar_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `calendar_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `calendar_archived_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`calendar_id`)
+  PRIMARY KEY (`calendar_id`),
+  UNIQUE KEY `calendar_feed_key` (`calendar_feed_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `canned_responses`
+--
+
+DROP TABLE IF EXISTS `canned_responses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `canned_responses` (
+  `canned_response_id` int(11) NOT NULL AUTO_INCREMENT,
+  `canned_response_name` varchar(200) NOT NULL,
+  `canned_response_body` longtext DEFAULT NULL,
+  `canned_response_category_id` int(11) NOT NULL DEFAULT 0,
+  `canned_response_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `canned_response_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `canned_response_archived_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`canned_response_id`),
+  KEY `canned_response_category_id` (`canned_response_category_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -505,7 +576,8 @@ CREATE TABLE `certificates` (
   `certificate_accessed_at` datetime DEFAULT NULL,
   `certificate_domain_id` int(11) NOT NULL DEFAULT 0,
   `certificate_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`certificate_id`)
+  PRIMARY KEY (`certificate_id`),
+  KEY `certificate_client_id` (`certificate_client_id`,`certificate_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -790,7 +862,8 @@ CREATE TABLE `contacts` (
   `contact_user_id` int(11) NOT NULL DEFAULT 0,
   `contact_department` varchar(200) DEFAULT NULL,
   `contact_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`contact_id`)
+  PRIMARY KEY (`contact_id`),
+  KEY `contact_client_id` (`contact_client_id`,`contact_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -903,7 +976,7 @@ CREATE TABLE `credentials` (
   `credential_uri` varchar(500) DEFAULT NULL,
   `credential_uri_2` varchar(500) DEFAULT NULL,
   `credential_username` varchar(500) DEFAULT NULL,
-  `credential_password` varbinary(200) DEFAULT NULL,
+  `credential_password` varchar(500) DEFAULT NULL,
   `credential_otp_secret` varchar(200) DEFAULT NULL,
   `credential_note` text DEFAULT NULL,
   `credential_favorite` tinyint(1) NOT NULL DEFAULT 0,
@@ -916,7 +989,8 @@ CREATE TABLE `credentials` (
   `credential_contact_id` int(11) NOT NULL DEFAULT 0,
   `credential_asset_id` int(11) NOT NULL DEFAULT 0,
   `credential_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`credential_id`)
+  PRIMARY KEY (`credential_id`),
+  KEY `credential_client_id` (`credential_client_id`,`credential_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -941,6 +1015,32 @@ CREATE TABLE `credits` (
   KEY `credit_client_id` (`credit_client_id`),
   KEY `credit_invoice_id` (`credit_invoice_id`),
   KEY `credit_created_at` (`credit_created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `cron_jobs`
+--
+
+DROP TABLE IF EXISTS `cron_jobs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `cron_jobs` (
+  `cron_job_id` int(11) NOT NULL AUTO_INCREMENT,
+  `cron_job_name` varchar(200) NOT NULL,
+  `cron_job_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `cron_job_schedule` varchar(200) NOT NULL DEFAULT 'Interval',
+  `cron_job_interval_minutes` int(11) NOT NULL DEFAULT 1,
+  `cron_job_daily_at` time DEFAULT NULL,
+  `cron_job_run_now` tinyint(1) NOT NULL DEFAULT 0,
+  `cron_job_last_run_at` datetime DEFAULT NULL,
+  `cron_job_last_finished_at` datetime DEFAULT NULL,
+  `cron_job_last_duration` decimal(10,2) DEFAULT NULL,
+  `cron_job_last_status` varchar(200) DEFAULT NULL,
+  `cron_job_last_error` text DEFAULT NULL,
+  `cron_job_last_error_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`cron_job_id`),
+  UNIQUE KEY `cron_job_name` (`cron_job_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1102,6 +1202,7 @@ CREATE TABLE `documents` (
   `document_updated_by` int(11) NOT NULL DEFAULT 0,
   `document_client_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`document_id`),
+  KEY `document_client_id` (`document_client_id`,`document_archived_at`),
   FULLTEXT KEY `document_content_raw` (`document_content_raw`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1154,7 +1255,8 @@ CREATE TABLE `domains` (
   `domain_dnshost` int(11) NOT NULL DEFAULT 0,
   `domain_mailhost` int(11) NOT NULL DEFAULT 0,
   `domain_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`domain_id`)
+  PRIMARY KEY (`domain_id`),
+  KEY `domain_client_id` (`domain_client_id`,`domain_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1175,11 +1277,13 @@ CREATE TABLE `email_queue` (
   `email_subject` varchar(255) NOT NULL,
   `email_content` longtext NOT NULL,
   `email_cal_str` varchar(1024) DEFAULT NULL,
+  `email_attachments` text DEFAULT NULL,
   `email_queued_at` datetime NOT NULL DEFAULT current_timestamp(),
   `email_failed_at` datetime DEFAULT NULL,
   `email_attempts` tinyint(1) NOT NULL DEFAULT 0,
   `email_sent_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`email_id`)
+  PRIMARY KEY (`email_id`),
+  KEY `email_status` (`email_status`,`email_queued_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1233,7 +1337,8 @@ CREATE TABLE `files` (
   `file_created_by` int(11) NOT NULL DEFAULT 0,
   `file_folder_id` int(11) NOT NULL DEFAULT 0,
   `file_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`file_id`)
+  PRIMARY KEY (`file_id`),
+  KEY `file_client_id` (`file_client_id`,`file_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1264,12 +1369,14 @@ DROP TABLE IF EXISTS `history`;
 CREATE TABLE `history` (
   `history_id` int(11) NOT NULL AUTO_INCREMENT,
   `history_status` varchar(200) NOT NULL,
-  `history_description` varchar(200) NOT NULL,
+  `history_description` text NOT NULL,
   `history_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `history_invoice_id` int(11) NOT NULL DEFAULT 0,
   `history_recurring_invoice_id` int(11) NOT NULL DEFAULT 0,
   `history_quote_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`history_id`)
+  PRIMARY KEY (`history_id`),
+  KEY `history_invoice_id` (`history_invoice_id`),
+  KEY `history_quote_id` (`history_quote_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1296,7 +1403,8 @@ CREATE TABLE `invoice_items` (
   `item_tax_id` int(11) NOT NULL DEFAULT 0,
   `item_product_id` int(11) NOT NULL DEFAULT 0,
   `item_invoice_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`item_id`)
+  PRIMARY KEY (`item_id`),
+  KEY `item_invoice_id` (`item_invoice_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1327,7 +1435,8 @@ CREATE TABLE `invoices` (
   `invoice_category_id` int(11) NOT NULL,
   `invoice_recurring_invoice_id` int(11) NOT NULL DEFAULT 0,
   `invoice_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`invoice_id`)
+  PRIMARY KEY (`invoice_id`),
+  KEY `invoice_client_id` (`invoice_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1380,7 +1489,8 @@ CREATE TABLE `locations` (
   `location_accessed_at` datetime DEFAULT NULL,
   `location_contact_id` int(11) NOT NULL DEFAULT 0,
   `location_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`location_id`)
+  PRIMARY KEY (`location_id`),
+  KEY `location_client_id` (`location_client_id`,`location_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1402,7 +1512,9 @@ CREATE TABLE `logs` (
   `log_client_id` int(11) NOT NULL DEFAULT 0,
   `log_user_id` int(11) NOT NULL DEFAULT 0,
   `log_entity_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`log_id`)
+  PRIMARY KEY (`log_id`),
+  KEY `log_created_at` (`log_created_at`),
+  KEY `log_user_id` (`log_user_id`,`log_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1418,6 +1530,27 @@ CREATE TABLE `modules` (
   `module_name` varchar(200) NOT NULL,
   `module_description` varchar(200) DEFAULT NULL,
   PRIMARY KEY (`module_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `network_ips`
+--
+
+DROP TABLE IF EXISTS `network_ips`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `network_ips` (
+  `ip_id` int(11) NOT NULL AUTO_INCREMENT,
+  `ip_address` varchar(45) NOT NULL,
+  `ip_hostname` varchar(200) DEFAULT NULL,
+  `ip_description` varchar(200) DEFAULT NULL,
+  `ip_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `ip_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  `ip_network_id` int(11) NOT NULL,
+  PRIMARY KEY (`ip_id`),
+  UNIQUE KEY `ip_network_address` (`ip_network_id`,`ip_address`),
+  CONSTRAINT `network_ips_ibfk_1` FOREIGN KEY (`ip_network_id`) REFERENCES `networks` (`network_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1447,7 +1580,8 @@ CREATE TABLE `networks` (
   `network_accessed_at` datetime DEFAULT NULL,
   `network_location_id` int(11) NOT NULL DEFAULT 0,
   `network_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`network_id`)
+  PRIMARY KEY (`network_id`),
+  KEY `network_client_id` (`network_client_id`,`network_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1469,7 +1603,8 @@ CREATE TABLE `notifications` (
   `notification_client_id` int(11) NOT NULL DEFAULT 0,
   `notification_user_id` int(11) NOT NULL DEFAULT 0,
   `notification_entity_id` int(11) DEFAULT 0,
-  PRIMARY KEY (`notification_id`)
+  PRIMARY KEY (`notification_id`),
+  KEY `notification_user_id` (`notification_user_id`,`notification_dismissed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1508,8 +1643,6 @@ CREATE TABLE `payment_providers` (
   `payment_provider_account` int(11) NOT NULL,
   `payment_provider_expense_vendor` int(11) NOT NULL DEFAULT 0,
   `payment_provider_expense_category` int(11) NOT NULL DEFAULT 0,
-  `payment_provider_expense_percentage_fee` decimal(4,4) DEFAULT NULL,
-  `payment_provider_expense_flat_fee` decimal(15,2) DEFAULT NULL,
   `payment_provider_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `payment_provider_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   PRIMARY KEY (`payment_provider_id`)
@@ -1535,7 +1668,8 @@ CREATE TABLE `payments` (
   `payment_archived_at` datetime DEFAULT NULL,
   `payment_account_id` int(11) NOT NULL,
   `payment_invoice_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`payment_id`)
+  PRIMARY KEY (`payment_id`),
+  KEY `payment_invoice_id` (`payment_invoice_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1636,7 +1770,8 @@ CREATE TABLE `projects` (
   `project_completed_at` datetime DEFAULT NULL,
   `project_archived_at` datetime DEFAULT NULL,
   `project_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`project_id`)
+  PRIMARY KEY (`project_id`),
+  KEY `project_client_id` (`project_client_id`,`project_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1680,7 +1815,8 @@ CREATE TABLE `quote_items` (
   `item_tax_id` int(11) NOT NULL DEFAULT 0,
   `item_product_id` int(11) NOT NULL DEFAULT 0,
   `item_quote_id` int(11) NOT NULL,
-  PRIMARY KEY (`item_id`)
+  PRIMARY KEY (`item_id`),
+  KEY `item_quote_id` (`item_quote_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1709,7 +1845,8 @@ CREATE TABLE `quotes` (
   `quote_archived_at` datetime DEFAULT NULL,
   `quote_category_id` int(11) NOT NULL,
   `quote_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`quote_id`)
+  PRIMARY KEY (`quote_id`),
+  KEY `quote_client_id` (`quote_client_id`,`quote_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1760,7 +1897,8 @@ CREATE TABLE `racks` (
   `rack_archived_at` datetime DEFAULT NULL,
   `rack_location_id` int(11) DEFAULT NULL,
   `rack_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`rack_id`)
+  PRIMARY KEY (`rack_id`),
+  KEY `rack_client_id` (`rack_client_id`,`rack_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1781,7 +1919,8 @@ CREATE TABLE `records` (
   `record_updated_at` datetime NOT NULL DEFAULT '0000-00-00 00:00:00' ON UPDATE current_timestamp(),
   `record_archived_at` datetime DEFAULT NULL,
   `record_domain_id` int(11) NOT NULL,
-  PRIMARY KEY (`record_id`)
+  PRIMARY KEY (`record_id`),
+  KEY `record_domain_id` (`record_domain_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1869,7 +2008,8 @@ CREATE TABLE `recurring_invoices` (
   `recurring_invoice_archived_at` datetime DEFAULT NULL,
   `recurring_invoice_category_id` int(11) NOT NULL,
   `recurring_invoice_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`recurring_invoice_id`)
+  PRIMARY KEY (`recurring_invoice_id`),
+  KEY `recurring_invoice_client_id` (`recurring_invoice_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1915,6 +2055,25 @@ CREATE TABLE `recurring_ticket_assets` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `recurring_ticket_tasks`
+--
+
+DROP TABLE IF EXISTS `recurring_ticket_tasks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `recurring_ticket_tasks` (
+  `recurring_ticket_task_id` int(11) NOT NULL AUTO_INCREMENT,
+  `recurring_ticket_task_name` varchar(255) NOT NULL,
+  `recurring_ticket_task_order` int(11) NOT NULL DEFAULT 0,
+  `recurring_ticket_task_completion_estimate` int(11) NOT NULL DEFAULT 0,
+  `recurring_ticket_task_recurring_ticket_id` int(11) NOT NULL,
+  PRIMARY KEY (`recurring_ticket_task_id`),
+  KEY `recurring_ticket_task_recurring_ticket_id` (`recurring_ticket_task_recurring_ticket_id`),
+  CONSTRAINT `recurring_ticket_tasks_ibfk_1` FOREIGN KEY (`recurring_ticket_task_recurring_ticket_id`) REFERENCES `recurring_tickets` (`recurring_ticket_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `recurring_tickets`
 --
 
@@ -1938,7 +2097,9 @@ CREATE TABLE `recurring_tickets` (
   `recurring_ticket_client_id` int(11) NOT NULL DEFAULT 0,
   `recurring_ticket_contact_id` int(11) NOT NULL DEFAULT 0,
   `recurring_ticket_asset_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`recurring_ticket_id`)
+  `recurring_ticket_ticket_template_id` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`recurring_ticket_id`),
+  KEY `recurring_ticket_client_id` (`recurring_ticket_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1979,7 +2140,8 @@ CREATE TABLE `revenues` (
   `revenue_category_id` int(11) NOT NULL DEFAULT 0,
   `revenue_account_id` int(11) NOT NULL,
   `revenue_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`revenue_id`)
+  PRIMARY KEY (`revenue_id`),
+  KEY `revenue_client_id` (`revenue_client_id`,`revenue_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2121,7 +2283,8 @@ CREATE TABLE `services` (
   `service_accessed_at` datetime DEFAULT NULL,
   `service_review_due` date DEFAULT NULL,
   `service_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`service_id`)
+  PRIMARY KEY (`service_id`),
+  KEY `service_client_id` (`service_client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2201,7 +2364,6 @@ CREATE TABLE `settings` (
   `config_recurring_auto_send_invoice` tinyint(1) NOT NULL DEFAULT 1,
   `config_enable_alert_domain_expire` tinyint(1) NOT NULL DEFAULT 1,
   `config_send_invoice_reminders` tinyint(1) NOT NULL DEFAULT 1,
-  `config_invoice_overdue_reminders` varchar(200) DEFAULT NULL,
   `config_azure_client_id` varchar(200) DEFAULT NULL,
   `config_azure_client_secret` varchar(200) DEFAULT NULL,
   `config_module_enable_itdoc` tinyint(1) NOT NULL DEFAULT 1,
@@ -2216,12 +2378,26 @@ CREATE TABLE `settings` (
   `config_theme` varchar(200) DEFAULT 'blue',
   `config_telemetry` tinyint(1) DEFAULT 0,
   `config_timezone` varchar(200) NOT NULL DEFAULT 'America/New_York',
+  `config_business_days` varchar(20) NOT NULL DEFAULT '1,2,3,4,5',
+  `config_business_hours_start` time NOT NULL DEFAULT '09:00:00',
+  `config_business_hours_end` time NOT NULL DEFAULT '17:00:00',
+  `config_sla_warning_percent` tinyint(3) NOT NULL DEFAULT 75,
+  `config_sla_notification_email` varchar(200) DEFAULT NULL,
   `config_destructive_deletes_enable` tinyint(1) NOT NULL DEFAULT 0,
   `config_whitelabel_enabled` int(11) NOT NULL DEFAULT 0,
   `config_whitelabel_key` text DEFAULT NULL,
   `config_ticket_default_view` tinyint(1) NOT NULL DEFAULT 0,
   `config_ticket_ordering` tinyint(1) NOT NULL DEFAULT 0,
   `config_ticket_moving_columns` tinyint(1) NOT NULL DEFAULT 1,
+  `config_cron_last_dispatch_at` datetime DEFAULT NULL,
+  `config_backup_retention_days` int(11) NOT NULL DEFAULT 30,
+  `config_backup_retention_count` int(11) NOT NULL DEFAULT 5,
+  `config_backup_cron_type` varchar(20) NOT NULL DEFAULT 'full',
+  `config_update_queued_at` datetime DEFAULT NULL,
+  `config_internal_client_id` int(11) NOT NULL DEFAULT 0,
+  `config_update_latest_commit` varchar(40) DEFAULT NULL,
+  `config_update_pending_commits` text DEFAULT NULL,
+  `config_update_checked_at` datetime DEFAULT NULL,
   PRIMARY KEY (`company_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2253,6 +2429,60 @@ CREATE TABLE `shared_items` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `sla_assignments`
+--
+
+DROP TABLE IF EXISTS `sla_assignments`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sla_assignments` (
+  `sla_assignment_id` int(11) NOT NULL AUTO_INCREMENT,
+  `sla_assignment_client_id` int(11) NOT NULL DEFAULT 0,
+  `sla_assignment_priority` varchar(200) NOT NULL,
+  `sla_assignment_sla_id` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`sla_assignment_id`),
+  UNIQUE KEY `sla_assignment_client_priority` (`sla_assignment_client_id`,`sla_assignment_priority`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `sla_history`
+--
+
+DROP TABLE IF EXISTS `sla_history`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sla_history` (
+  `sla_history_id` int(11) NOT NULL AUTO_INCREMENT,
+  `sla_history_started_at` datetime NOT NULL,
+  `sla_history_ended_at` datetime DEFAULT NULL,
+  `sla_history_minutes` int(11) DEFAULT NULL,
+  `sla_history_ticket_id` int(11) NOT NULL,
+  PRIMARY KEY (`sla_history_id`),
+  KEY `sla_history_ticket_id` (`sla_history_ticket_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `slas`
+--
+
+DROP TABLE IF EXISTS `slas`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8mb4 */;
+CREATE TABLE `slas` (
+  `sla_id` int(11) NOT NULL AUTO_INCREMENT,
+  `sla_name` varchar(200) NOT NULL,
+  `sla_description` varchar(500) DEFAULT NULL,
+  `sla_response_minutes` int(11) NOT NULL,
+  `sla_resolution_minutes` int(11) DEFAULT NULL,
+  `sla_created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `sla_archived_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`sla_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `software`
 --
 
@@ -2279,7 +2509,8 @@ CREATE TABLE `software` (
   `software_accessed_at` datetime DEFAULT NULL,
   `software_vendor_id` int(11) DEFAULT 0,
   `software_client_id` int(11) NOT NULL,
-  PRIMARY KEY (`software_id`)
+  PRIMARY KEY (`software_id`),
+  KEY `software_client_id` (`software_client_id`,`software_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2522,7 +2753,8 @@ CREATE TABLE `tasks` (
   `task_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `task_updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `task_ticket_id` int(11) DEFAULT NULL,
-  PRIMARY KEY (`task_id`)
+  PRIMARY KEY (`task_id`),
+  KEY `task_ticket_id` (`task_ticket_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2575,7 +2807,8 @@ CREATE TABLE `ticket_attachments` (
   `ticket_attachment_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `ticket_attachment_ticket_id` int(11) NOT NULL,
   `ticket_attachment_reply_id` int(11) DEFAULT NULL,
-  PRIMARY KEY (`ticket_attachment_id`)
+  PRIMARY KEY (`ticket_attachment_id`),
+  KEY `ticket_attachment_reply_id` (`ticket_attachment_reply_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2592,7 +2825,8 @@ CREATE TABLE `ticket_history` (
   `ticket_history_description` varchar(255) NOT NULL,
   `ticket_history_created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `ticket_history_ticket_id` int(11) NOT NULL,
-  PRIMARY KEY (`ticket_history_id`)
+  PRIMARY KEY (`ticket_history_id`),
+  KEY `ticket_history_ticket_id` (`ticket_history_ticket_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2613,7 +2847,8 @@ CREATE TABLE `ticket_replies` (
   `ticket_reply_archived_at` datetime DEFAULT NULL,
   `ticket_reply_by` int(11) NOT NULL,
   `ticket_reply_ticket_id` int(11) NOT NULL,
-  PRIMARY KEY (`ticket_reply_id`)
+  PRIMARY KEY (`ticket_reply_id`),
+  KEY `ticket_reply_ticket_id` (`ticket_reply_ticket_id`,`ticket_reply_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2629,6 +2864,7 @@ CREATE TABLE `ticket_statuses` (
   `ticket_status_name` varchar(200) NOT NULL,
   `ticket_status_color` varchar(200) NOT NULL,
   `ticket_status_active` tinyint(1) NOT NULL DEFAULT 1,
+  `ticket_status_pauses_sla` tinyint(1) NOT NULL DEFAULT 0,
   `ticket_status_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`ticket_status_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -2682,7 +2918,8 @@ CREATE TABLE `ticket_watchers` (
   `watcher_name` varchar(255) DEFAULT NULL,
   `watcher_email` varchar(255) NOT NULL,
   `watcher_ticket_id` int(11) NOT NULL,
-  PRIMARY KEY (`watcher_id`)
+  PRIMARY KEY (`watcher_id`),
+  KEY `watcher_ticket_id` (`watcher_ticket_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2703,6 +2940,7 @@ CREATE TABLE `tickets` (
   `ticket_details` longtext NOT NULL,
   `ticket_priority` varchar(200) DEFAULT NULL,
   `ticket_status` int(11) NOT NULL,
+  `ticket_sla_id` int(11) NOT NULL DEFAULT 0,
   `ticket_billable` tinyint(1) NOT NULL DEFAULT 0,
   `ticket_schedule` datetime DEFAULT NULL,
   `ticket_onsite` tinyint(1) NOT NULL DEFAULT 0,
@@ -2715,6 +2953,12 @@ CREATE TABLE `tickets` (
   `ticket_resolved_at` datetime DEFAULT NULL,
   `ticket_archived_at` datetime DEFAULT NULL,
   `ticket_first_response_at` datetime DEFAULT NULL,
+  `ticket_response_due_at` datetime DEFAULT NULL,
+  `ticket_resolution_due_at` datetime DEFAULT NULL,
+  `ticket_response_sla_met` tinyint(1) DEFAULT NULL,
+  `ticket_resolution_sla_met` tinyint(1) DEFAULT NULL,
+  `ticket_response_sla_alert_stage` tinyint(1) NOT NULL DEFAULT 0,
+  `ticket_resolution_sla_alert_stage` tinyint(1) NOT NULL DEFAULT 0,
   `ticket_closed_at` datetime DEFAULT NULL,
   `ticket_created_by` int(11) NOT NULL,
   `ticket_assigned_to` int(11) NOT NULL DEFAULT 0,
@@ -2729,7 +2973,10 @@ CREATE TABLE `tickets` (
   `ticket_project_id` int(11) NOT NULL DEFAULT 0,
   `ticket_recurring_ticket_id` int(11) DEFAULT 0,
   `ticket_order` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`ticket_id`)
+  PRIMARY KEY (`ticket_id`),
+  KEY `ticket_response_due_at` (`ticket_response_due_at`),
+  KEY `ticket_resolution_due_at` (`ticket_resolution_due_at`),
+  KEY `ticket_client_id` (`ticket_client_id`,`ticket_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2749,7 +2996,8 @@ CREATE TABLE `transfers` (
   `transfer_archived_at` datetime DEFAULT NULL,
   `transfer_expense_id` int(11) NOT NULL,
   `transfer_revenue_id` int(11) NOT NULL,
-  PRIMARY KEY (`transfer_id`)
+  PRIMARY KEY (`transfer_id`),
+  KEY `transfer_revenue_id` (`transfer_revenue_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2775,7 +3023,8 @@ CREATE TABLE `trips` (
   `trip_archived_at` datetime DEFAULT NULL,
   `trip_user_id` int(11) NOT NULL DEFAULT 0,
   `trip_client_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`trip_id`)
+  PRIMARY KEY (`trip_id`),
+  KEY `trip_client_id` (`trip_client_id`,`trip_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -2789,6 +3038,7 @@ DROP TABLE IF EXISTS `user_client_permissions`;
 CREATE TABLE `user_client_permissions` (
   `user_id` int(11) NOT NULL,
   `client_id` int(11) NOT NULL,
+  `permission_type` enum('allow','deny') NOT NULL DEFAULT 'allow',
   PRIMARY KEY (`user_id`,`client_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -2986,7 +3236,8 @@ CREATE TABLE `vendors` (
   `vendor_accessed_at` datetime DEFAULT NULL,
   `vendor_client_id` int(11) NOT NULL DEFAULT 0,
   `vendor_template_id` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`vendor_id`)
+  PRIMARY KEY (`vendor_id`),
+  KEY `vendor_client_id` (`vendor_client_id`,`vendor_archived_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -2999,4 +3250,4 @@ CREATE TABLE `vendors` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-04-04 18:13:53
+-- Dump completed on 2026-08-28 16:40:00

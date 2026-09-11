@@ -4,44 +4,6 @@ require_once "includes/inc_all_reports.php";
 
 enforceUserPermission('module_sales', 1);
 
-function secondsToTime($inputSeconds) {
-    $secondsInAMinute = 60;
-    $secondsInAnHour = 60 * $secondsInAMinute;
-    $secondsInADay = 24 * $secondsInAnHour;
-
-    // Extract days
-    $days = floor($inputSeconds / $secondsInADay);
-
-    // Extract hours
-    $hourSeconds = $inputSeconds % $secondsInADay;
-    $hours = floor($hourSeconds / $secondsInAnHour);
-
-    // Extract minutes
-    $minuteSeconds = $hourSeconds % $secondsInAnHour;
-    $minutes = floor($minuteSeconds / $secondsInAMinute);
-
-    // Extract the remaining seconds
-    $remainingSeconds = $minuteSeconds % $secondsInAMinute;
-    $seconds = ceil($remainingSeconds);
-
-    // Format and return
-    $timeParts = [];
-    $sections = [
-        'day' => (int)$days,
-        'hour' => (int)$hours,
-        'minute' => (int)$minutes,
-        'second' => (int)$seconds,
-    ];
-
-    foreach ($sections as $name => $value){
-        if ($value > 0){
-            $timeParts[] = $value. ' '.$name.($value == 1 ? '' : 's');
-        }
-    }
-
-    return implode(', ', $timeParts);
-}
-
 if (isset($_GET['year'])) {
     $year = intval($_GET['year']);
 } else {
@@ -59,18 +21,18 @@ $rows = 0;
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring mr-2"></i>Unbilled Tickets By Client</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-life-ring me-2"></i>Unbilled Tickets By Client</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body">
             <form class="mb-3">
-                <select onchange="this.form.submit()" class="form-control" name="year">
+                <select onchange="this.form.submit()" class="form-select" name="year">
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_ticket_years)) {
                         $ticket_year = intval($row['ticket_year']); ?>
-                        <option <?php if ($year == $ticket_year) { ?> selected <?php } ?> > <?php echo $ticket_year; ?></option>
+                        <option <?php if ($year == $ticket_year) { ?> selected <?php } ?> > <?= $ticket_year ?></option>
                     <?php } ?>
                 </select>
             </form>
@@ -80,16 +42,16 @@ $rows = 0;
                     <thead>
                     <tr>
                         <th>Client</th>
-                        <th class="text-right">Tickets Raised</th>
-                        <th class="text-right">Billable Tickets</th>
-                        <th class="text-right">Unbilled Tickets</th>
+                        <th class="text-end">Tickets Raised</th>
+                        <th class="text-end">Billable Tickets</th>
+                        <th class="text-end">Unbilled Tickets</th>
                     </tr>
                     </thead>
                     <tbody>
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_clients)) {
                         $client_id = intval($row['client_id']);
-                        $client_name = nullable_htmlentities($row['client_name']);
+                        $client_name = escapeHtml($row['client_name']);
 
                         // Calculate total tickets raised in period
                         $sql_ticket_raised_count = mysqli_query(
@@ -152,11 +114,11 @@ $rows = 0;
 
                             <tr>
                                 <td>
-                                    <a href="../../agent/tickets.php?client_id=<?php echo $client_id; ?>&billable=1&unbilled"><?php echo $client_name; ?></a>
+                                    <a href="../../agent/tickets.php?client_id=<?= $client_id ?>&billable=1&unbilled"><?= $client_name ?></a>
                                 </td>
-                                <td class="text-right"><?php echo $ticket_raised_count; ?></td>
-                                <td class="text-right"><?php echo $ticket_closed_count; ?></td>
-                                <td class="text-right"><?php echo $ticket_unbilled_count; ?></td>
+                                <td class="text-end"><?= $ticket_raised_count ?></td>
+                                <td class="text-end"><?= $ticket_closed_count ?></td>
+                                <td class="text-end"><?= $ticket_unbilled_count ?></td>
                             </tr>
                             <?php
                         }

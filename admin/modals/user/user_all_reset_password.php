@@ -1,6 +1,6 @@
 <?php
 
-require_once '../../../includes/modal_header.php';
+require_once '../../includes/modal_header.php';
 
 ob_start();
 
@@ -15,19 +15,17 @@ ob_start();
         </div>
         <h6 class="mb-4 text-secondary"><b>All ITFlow agent passwords will be reset and shown to you </b><i>(except yours - change yours first!)</i>.<br/><br/>You should communicate temporary passwords to agents out of band (e.g. via a phone call) and require they are changed ASAP.</h6>
         <form action="post.php" method="POST">
-            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?>">
+            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
             <div class="row col-7 offset-4">
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <input type="password" class="form-control" placeholder="Enter your account password to continue" name="admin_password" required>
-                    </div>
                 </div>
             </div>
             <br>
-            <button class="btn btn-danger" type="submit" name="ir_reset_user_password"><i class="fas fa-fw fa-key mr-2"></i>Reset passwords</button>
+            <button class="btn btn-danger" type="submit" name="ir_reset_user_password"><i class="fas fa-fw fa-key me-2"></i>Reset passwords</button>
         </form>
     </div>
-    <button type="button" class="btn btn-outline-secondary btn-lg px-5 mr-4" data-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-outline-secondary btn-lg px-5 me-4" data-bs-dismiss="modal">Cancel</button>
 
 </div>
 

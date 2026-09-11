@@ -7,17 +7,21 @@ if (php_sapi_name() !== 'cli') {
     die("This script must be run from the command line.\n");
 }
 
+// Prevent overlapping runs of this script
+$cron_lock_script = __FILE__;
+require_once "includes/cron_lock.php";
+
 require_once "../config.php";
 require_once "../includes/inc_set_timezone.php";
 require_once "../functions.php";
-require_once "../plugins/vendor/autoload.php";
+require_once "../libs/vendor/autoload.php";
 
 // PHP Mailer Libs
-require_once "../plugins/PHPMailer/src/Exception.php";
-require_once "../plugins/PHPMailer/src/PHPMailer.php";
-require_once "../plugins/PHPMailer/src/SMTP.php";
-require_once "../plugins/PHPMailer/src/OAuthTokenProvider.php";
-require_once "../plugins/PHPMailer/src/OAuth.php";
+require_once "../libs/PHPMailer/src/Exception.php";
+require_once "../libs/PHPMailer/src/PHPMailer.php";
+require_once "../libs/PHPMailer/src/SMTP.php";
+require_once "../libs/PHPMailer/src/OAuthTokenProvider.php";
+require_once "../libs/PHPMailer/src/OAuth.php";
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -54,7 +58,11 @@ class StaticTokenProvider implements OAuthTokenProvider {
 /** =======================================================================
  *  Load settings
  * ======================================================================= */
-$sql_settings = mysqli_query($mysqli, "SELECT * FROM settings WHERE company_id = 1");
+$sql_settings = mysqli_query($mysqli, "SELECT config_enable_cron, config_mail_oauth_access_token,
+    config_mail_oauth_access_token_expires_at, config_mail_oauth_client_id,
+    config_mail_oauth_client_secret, config_mail_oauth_refresh_token,
+    config_mail_oauth_tenant_id, config_smtp_encryption, config_smtp_host,
+    config_smtp_password, config_smtp_port, config_smtp_provider, config_smtp_username FROM settings WHERE company_id = 1");
 $row = mysqli_fetch_assoc($sql_settings);
 
 $config_enable_cron      = intval($row['config_enable_cron']);
@@ -78,32 +86,13 @@ $config_mail_oauth_access_token_provider   = $row['config_mail_oauth_access_toke
 
 if ($config_enable_cron == 0) {
     logApp("Cron-Mail-Queue", "error", "Cron Mail Queue unable to run - cron not enabled in admin settings.");
-    exit("Cron: is not enabled -- Quitting..");
+    cronJobStop("Cron: is not enabled -- Quitting..");
 }
 
 if (empty($config_smtp_provider)) {
     logApp("Cron-Mail-Queue", "info", "SMTP sending skipped: provider not configured.");
-    exit(0);
+    cronJobStop();
 }
-
-/** =======================================================================
- *  Lock file
- * ======================================================================= */
-$temp_dir = sys_get_temp_dir();
-$lock_file_path = "{$temp_dir}/itflow_mail_queue_{$installation_id}.lock";
-
-if (file_exists($lock_file_path)) {
-    $file_age = time() - filemtime($lock_file_path);
-    if ($file_age > 600) {
-        unlink($lock_file_path);
-        logApp("Cron-Mail-Queue", "warning", "Cron Mail Queue detected a lock file was present but was over 10 minutes old so it removed it.");
-    } else {
-        logApp("Cron-Mail-Queue", "info", "Cron Mail Queue attempted to execute but was already executing so instead it terminated.");
-        exit("Script is already running. Exiting.");
-    }
-}
-
-file_put_contents($lock_file_path, "Locked");
 
 /** =======================================================================
  *  Mail OAuth helpers + sender function
@@ -332,6 +321,7 @@ function sendQueueEmail(
     string $subject,
     string $html_body,
     string $ics_str,
+    string $attachments_json,
     string $oauth_client_id,
     string $oauth_client_secret,
     string $oauth_tenant_id,
@@ -360,16 +350,25 @@ function sendQueueEmail(
         return true;
     }
 
-    // Sensible defaults for OAuth providers if fields were left blank
+    // Google and Microsoft each expose exactly one XOAUTH2 SMTP endpoint, so the
+    // stored host/port/encryption are overridden rather than used as a fallback -
+    // the same thing cron/ticket_email_parser.php already does on the IMAP side.
+    //
+    // These used to apply only when the columns were blank, which quietly broke
+    // every install that moved from Standard SMTP to OAuth: the old server is
+    // still sitting in config_smtp_host/port/encryption, the settings page hides
+    // those fields for OAuth providers so there is no way to clear them, and the
+    // send then pointed an M365 bearer token at the previous mail host. Only a
+    // fresh install, where the columns happened to be empty, ever worked.
     if ($provider === 'google_oauth') {
-        if (!$host) $host = 'smtp.gmail.com';
-        if (!$port) $port = 587;
-        if (!$encryption) $encryption = 'tls';
+        $host       = 'smtp.gmail.com';
+        $port       = 587;
+        $encryption = 'tls';
         if (!$username) $username = $from_email;
     } elseif ($provider === 'microsoft_oauth') {
-        if (!$host) $host = 'smtp.office365.com';
-        if (!$port) $port = 587;
-        if (!$encryption) $encryption = 'tls';
+        $host       = 'smtp.office365.com';
+        $port       = 587;
+        $encryption = 'tls';
         if (!$username) $username = $from_email;
     }
 
@@ -379,6 +378,9 @@ function sendQueueEmail(
     $mail->isSMTP();
     $mail->Host = $host;
     $mail->Port = $port;
+    // Bound the SMTP conversation. Without this an unresponsive mail server can
+    // hold the cron lock open indefinitely and stall the whole queue.
+    $mail->Timeout = 30;
 
     $enc = strtolower($encryption);
     if ($enc === '' || $enc === 'none') {
@@ -429,14 +431,62 @@ function sendQueueEmail(
         $mail->addStringAttachment($ics_str, 'Scheduled_ticket.ics', 'base64', 'text/calendar');
     }
 
+    // File attachments arrive as a manifest of app-root-relative paths. Each one is
+    // resolved and confirmed to still be inside uploads/ before it is attached - the
+    // same guard the ticket attachment download endpoints apply - and a file that
+    // has been deleted since the message was queued is simply skipped.
+    if (!empty($attachments_json)) {
+
+        $attachment_manifest = json_decode($attachments_json, true);
+        $uploads_base = realpath(__DIR__ . '/../uploads');
+
+        if (is_array($attachment_manifest) && $uploads_base !== false) {
+            foreach ($attachment_manifest as $attachment) {
+
+                if (empty($attachment['path']) || empty($attachment['name'])) {
+                    continue;
+                }
+
+                $attachment_path = realpath(__DIR__ . '/../' . $attachment['path']);
+
+                if ($attachment_path === false || strpos($attachment_path, $uploads_base) !== 0) {
+                    continue;
+                }
+
+                $mail->addAttachment($attachment_path, basename($attachment['name']));
+            }
+        }
+    }
+
     $mail->send();
     return true;
 }
 
 /** =======================================================================
+ *  RECOVER: status = 1 (Sending) left behind by a run that died
+ *
+ *  Nothing else in the codebase ever selects status 1, so without this a row
+ *  claimed by a run that was killed mid-send stays 'Sending' forever and is never
+ *  delivered. The cron lock above guarantees no other run of this script is in
+ *  progress, so any row still sitting at status 1 is by definition orphaned and
+ *  safe to reclaim. It is moved to failed rather than queued so it inherits the
+ *  retry pass's 30 minute backoff and attempt cap instead of retrying instantly.
+ *
+ *  This can re-send a message that did go out but died before being marked sent.
+ *  That trade is deliberate: a duplicate is recoverable, an invoice that silently
+ *  never arrives is not.
+ * ======================================================================= */
+mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_failed_at = NOW(), email_attempts = email_attempts + 1 WHERE email_status = 1");
+$orphaned_emails = mysqli_affected_rows($mysqli);
+if ($orphaned_emails > 0) {
+    logApp("Cron-Mail-Queue", "warning", "Recovered $orphaned_emails email(s) left in a sending state by a previous run - queued for retry.");
+}
+
+/** =======================================================================
  *  SEND: status = 0 (Queued)
  * ======================================================================= */
-$sql_queue = mysqli_query($mysqli, "SELECT * FROM email_queue WHERE email_status = 0 AND email_queued_at <= NOW()");
+$sql_queue = mysqli_query($mysqli, "SELECT email_attachments, email_cal_str, email_content, email_from, email_from_name, email_id,
+    email_recipient, email_recipient_name, email_subject FROM email_queue WHERE email_status = 0 AND email_queued_at <= NOW()");
 
 if (mysqli_num_rows($sql_queue) > 0) {
     while ($rowq = mysqli_fetch_assoc($sql_queue)) {
@@ -448,34 +498,40 @@ if (mysqli_num_rows($sql_queue) > 0) {
         $email_subject        = $rowq['email_subject'];
         $email_content        = $rowq['email_content'];
         $email_ics_str        = $rowq['email_cal_str'];
+        $email_attachments    = $rowq['email_attachments'];
 
         // Check sender
         if (!filter_var($email_from, FILTER_VALIDATE_EMAIL)) {
-            $email_from_logging = sanitizeInput($rowq['email_from']);
+            $email_from_logging = escapeSql($rowq['email_from']);
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_attempts = 99 WHERE email_id = $email_id");
             logApp("Cron-Mail-Queue", "Error", "Failed to send email #$email_id due to invalid sender address: $email_from_logging - check configuration in settings.");
             appNotify("Mail", "Failed to send email #$email_id due to invalid sender address");
             continue;
         }
 
-        mysqli_query($mysqli, "UPDATE email_queue SET email_status = 1 WHERE email_id = $email_id");
+        // Claim the row - the conditional UPDATE is the lock. If another run already took
+        // this email, skip it rather than sending the client a second copy.
+        mysqli_query($mysqli, "UPDATE email_queue SET email_status = 1 WHERE email_id = $email_id AND email_status = 0");
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            continue;
+        }
 
         // Basic recipient syntax check
         if (!filter_var($email_recipient, FILTER_VALIDATE_EMAIL)) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_attempts = 99 WHERE email_id = $email_id");
-            $email_to_logging = sanitizeInput($email_recipient);
-            $email_subject_logging = sanitizeInput($rowq['email_subject']);
+            $email_to_logging = escapeSql($email_recipient);
+            $email_subject_logging = escapeSql($rowq['email_subject']);
             logApp("Cron-Mail-Queue", "Error", "Failed to send email: $email_id to $email_to_logging due to invalid recipient address. Email subject was: $email_subject_logging");
             appNotify("Mail", "Failed to send email #$email_id to $email_to_logging due to invalid recipient address: Email subject was: $email_subject_logging");
             continue;
         }
 
         // More intelligent recipient MX check (if not disabled with --no-mx-validation)
-        $domain = sanitizeInput(substr($email_recipient, strpos($email_recipient, '@') + 1));
+        $domain = escapeSql(substr($email_recipient, strpos($email_recipient, '@') + 1));
         if (!in_array('--no-mx-validation', $argv) && !checkdnsrr($domain, 'MX')) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_attempts = 99 WHERE email_id = $email_id");
-            $email_to_logging = sanitizeInput($email_recipient);
-            $email_subject_logging = sanitizeInput($rowq['email_subject']);
+            $email_to_logging = escapeSql($email_recipient);
+            $email_subject_logging = escapeSql($rowq['email_subject']);
             logApp("Cron-Mail-Queue", "Error", "Failed to send email: $email_id to $email_to_logging due to invalid recipient domain (no MX). Email subject was: $email_subject_logging");
             appNotify("Mail", "Failed to send email #$email_id to $email_to_logging due to invalid recipient domain (no MX): Email subject was: $email_subject_logging");
             continue;
@@ -496,6 +552,7 @@ if (mysqli_num_rows($sql_queue) > 0) {
                 (string)$email_subject,
                 (string)$email_content,
                 (string)$email_ics_str,
+                (string)$email_attachments,
                 (string)$config_mail_oauth_client_id,
                 (string)$config_mail_oauth_client_secret,
                 (string)$config_mail_oauth_tenant_id,
@@ -505,13 +562,14 @@ if (mysqli_num_rows($sql_queue) > 0) {
                 (string)$config_mail_oauth_access_token_provider
             );
 
-            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = 1 WHERE email_id = $email_id");
+            // Scrub the body on delivery - it can carry share decryption keys and temporary passwords
+            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = 1, email_content = '', email_cal_str = '', email_attachments = '' WHERE email_id = $email_id");
 
         } catch (Exception $e) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_failed_at = NOW(), email_attempts = 1 WHERE email_id = $email_id");
 
-            $email_recipient_logging = sanitizeInput($rowq['email_recipient']);
-            $email_subject_logging   = sanitizeInput($rowq['email_subject']);
+            $email_recipient_logging = escapeSql($rowq['email_recipient']);
+            $email_subject_logging   = escapeSql($rowq['email_subject']);
             // logApp() already caps app_log_details at 1000 chars (matching the DB
             // column) - no need to pre-truncate here too, which was cutting the
             // message off right where the useful provider error detail starts.
@@ -530,7 +588,8 @@ if (mysqli_num_rows($sql_queue) > 0) {
  */
 $sql_failed_queue = mysqli_query(
     $mysqli,
-    "SELECT * FROM email_queue
+    "SELECT email_attachments, email_attempts, email_cal_str, email_content, email_from,
+        email_from_name, email_id, email_recipient, email_recipient_name, email_subject FROM email_queue
      WHERE email_status = 2
        AND email_attempts < 4
        AND email_failed_at <= NOW() - INTERVAL 30 MINUTE"
@@ -546,9 +605,14 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
         $email_subject        = $rowf['email_subject'];
         $email_content        = $rowf['email_content'];
         $email_ics_str        = $rowf['email_cal_str'];
+        $email_attachments    = $rowf['email_attachments'];
         $email_attempts       = (int)$rowf['email_attempts'] + 1;
 
-        mysqli_query($mysqli, "UPDATE email_queue SET email_status = 1 WHERE email_id = $email_id");
+        // Claim the row - same lock as the send path, from the failed state this time.
+        mysqli_query($mysqli, "UPDATE email_queue SET email_status = 1 WHERE email_id = $email_id AND email_status = 2");
+        if (mysqli_affected_rows($mysqli) !== 1) {
+            continue;
+        }
 
         if (!filter_var($email_recipient, FILTER_VALIDATE_EMAIL)) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_attempts = $email_attempts WHERE email_id = $email_id");
@@ -570,6 +634,7 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
                 (string)$email_subject,
                 (string)$email_content,
                 (string)$email_ics_str,
+                (string)$email_attachments,
                 (string)$config_mail_oauth_client_id,
                 (string)$config_mail_oauth_client_secret,
                 (string)$config_mail_oauth_tenant_id,
@@ -579,13 +644,14 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
                 (string)$config_mail_oauth_access_token_provider
             );
 
-            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = $email_attempts WHERE email_id = $email_id");
+            // Scrub the body on delivery - it can carry share decryption keys and temporary passwords
+            mysqli_query($mysqli, "UPDATE email_queue SET email_status = 3, email_sent_at = NOW(), email_attempts = $email_attempts, email_content = '', email_cal_str = '', email_attachments = '' WHERE email_id = $email_id");
 
         } catch (Exception $e) {
             mysqli_query($mysqli, "UPDATE email_queue SET email_status = 2, email_failed_at = NOW(), email_attempts = $email_attempts WHERE email_id = $email_id");
 
-            $email_recipient_logging = sanitizeInput($rowf['email_recipient']);
-            $email_subject_logging   = sanitizeInput($rowf['email_subject']);
+            $email_recipient_logging = escapeSql($rowf['email_recipient']);
+            $email_subject_logging   = escapeSql($rowf['email_subject']);
             // logApp() already caps app_log_details at 1000 chars (matching the DB
             // column) - no need to pre-truncate here too, which was cutting the
             // message off right where the useful provider error detail starts.
@@ -595,8 +661,3 @@ if (mysqli_num_rows($sql_failed_queue) > 0) {
         }
     }
 }
-
-/** =======================================================================
- *  Unlock
- * ======================================================================= */
-unlink($lock_file_path);

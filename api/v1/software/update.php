@@ -27,8 +27,8 @@ if (!empty($software_id)) {
         $update_count = mysqli_affected_rows($mysqli);
 
         // Logging
-        logAction("Software", "Edit", "$name via API ($api_key_name)", $client_id, $software_id);
-        logAction("API", "Success", "Edited software $name via API ($api_key_name)", $client_id);
+        logAudit("Software", "Edit", "$name via API ($api_key_name)", $client_id, $software_id);
+        logAudit("API", "Success", "Edited software $name via API ($api_key_name)", $client_id);
     }
 }
 

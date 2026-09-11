@@ -12,7 +12,7 @@ if (!empty($ticket_ids)) {
     $whereNotIn = "AND ticket_id NOT IN ($ids)";
 }
 
-$sql_merge = mysqli_query($mysqli, "SELECT * FROM tickets
+$sql_merge = mysqli_query($mysqli, "SELECT client_name, ticket_id, ticket_number, ticket_prefix, ticket_status_name, ticket_subject FROM tickets
     LEFT JOIN ticket_statuses ON ticket_status = ticket_status_id
     LEFT JOIN clients ON client_id = ticket_client_id
     WHERE ticket_closed_at IS NULL
@@ -24,10 +24,8 @@ ob_start();
 
 ?>
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-clone mr-2"></i>Merge & close <strong><?= $count ?></strong> tickets</h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fa fa-fw fa-clone me-2"></i>Merge & close <strong><?= $count ?></strong> tickets</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 
 <form action="post.php" method="post" autocomplete="off">
@@ -41,22 +39,20 @@ ob_start();
             Selected tickets will be closed once merging is complete.
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Ticket number to merge this ticket into <strong class="text-danger">*</strong></label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-tag"></i></span>
-                </div>
-                <select class="form-control select2" name="merge_into_ticket_id" required>
+                <select class="form-select select2" name="merge_into_ticket_id" required>
                     <option value=''>- Select a Ticket -</option>
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_merge)) {
                         $ticket_id_merge = intval($row['ticket_id']);
-                        $ticket_prefix_merge = nullable_htmlentities($row['ticket_prefix']);
+                        $ticket_prefix_merge = escapeHtml($row['ticket_prefix']);
                         $ticket_number_merge = intval($row['ticket_number']);
-                        $ticket_status_name_merge = nullable_htmlentities($row['ticket_status_name']);
-                        $client_name_merge = nullable_htmlentities($row['client_name']);
-                        $ticket_subject_merge = nullable_htmlentities($row['ticket_subject']);
+                        $ticket_status_name_merge = escapeHtml($row['ticket_status_name']);
+                        $client_name_merge = escapeHtml($row['client_name']);
+                        $ticket_subject_merge = escapeHtml($row['ticket_subject']);
                         ?>
                         <option value="<?= $ticket_id_merge ?>">
                             <?= "$ticket_prefix_merge$ticket_number_merge ($ticket_status_name_merge) $client_name_merge -  $ticket_subject_merge" ?>
@@ -66,20 +62,18 @@ ob_start();
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Reason for merge <strong class="text-danger">*</strong></label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-sticky-note"></i></span>
-                </div>
                 <input type="text" class="form-control" name="merge_comment" placeholder="Comments">
             </div>
         </div>
 
     </div>
     <div class="modal-footer">
-        <button type="submit" name="bulk_merge_tickets" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Merge</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="bulk_merge_tickets" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Merge</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 </form>
 

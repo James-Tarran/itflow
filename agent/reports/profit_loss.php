@@ -17,29 +17,29 @@ $sql_all_years = mysqli_query($mysqli, "SELECT YEAR(expense_date) AS all_years F
     ORDER BY all_years DESC"
 );
 
-$sql_categories_income = mysqli_query($mysqli, "SELECT * FROM categories WHERE category_type = 'Income' ORDER BY category_name ASC");
+$sql_categories_income = mysqli_query($mysqli, "SELECT category_id, category_name FROM categories WHERE category_type = 'Income' ORDER BY category_name ASC");
 
-$sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE category_type = 'Expense' ORDER BY category_name ASC");
+$sql_categories_expense = mysqli_query($mysqli, "SELECT category_id, category_name FROM categories WHERE category_type = 'Expense' ORDER BY category_name ASC");
 
 
 ?>
 
     <div class="card card-dark">
         <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fas fa-fw fa-balance-scale mr-2"></i>Profit & Loss</h3>
+            <h3 class="card-title mt-2"><i class="fas fa-fw fa-balance-scale me-2"></i>Profit & Loss</h3>
             <div class="card-tools">
-                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print mr-2"></i>Print</button>
+                <button type="button" class="btn btn-primary d-print-none" onclick="window.print();"><i class="fas fa-fw fa-print me-2"></i>Print</button>
             </div>
         </div>
         <div class="card-body p-0">
             <form class="p-3">
-                <select onchange="this.form.submit()" class="form-control" name="year">
+                <select onchange="this.form.submit()" class="form-select" name="year">
                     <?php
 
                     while ($row = mysqli_fetch_assoc($sql_all_years)) {
                         $all_years = intval($row['all_years']);
                         ?>
-                        <option <?php if ($year == $all_years) { ?> selected <?php } ?> > <?php echo $all_years; ?></option>
+                        <option <?php if ($year == $all_years) { ?> selected <?php } ?> > <?= $all_years ?></option>
 
                         <?php
                     }
@@ -52,11 +52,11 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
                     <thead class="text-dark">
                     <tr>
                         <th></th>
-                        <th class="text-right">Jan-Mar</th>
-                        <th class="text-right">Apr-Jun</th>
-                        <th class="text-right">Jul-Sep</th>
-                        <th class="text-right">Oct-Dec</th>
-                        <th class="text-right">Total</th>
+                        <th class="text-end">Jan-Mar</th>
+                        <th class="text-end">Apr-Jun</th>
+                        <th class="text-end">Jul-Sep</th>
+                        <th class="text-end">Oct-Dec</th>
+                        <th class="text-end">Total</th>
                     </tr>
                     <tr>
                         <th><br><br>Income</th>
@@ -67,11 +67,11 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_categories_income)) {
                         $category_id = intval($row['category_id']);
-                        $category_name = nullable_htmlentities($row['category_name']);
+                        $category_name = escapeHtml($row['category_name']);
                         ?>
 
                         <tr>
-                            <td><?php echo $category_name; ?></td>
+                            <td><?= $category_name ?></td>
 
                             <?php
 
@@ -93,7 +93,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_amount_for_quarter_one, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $payment_amount_for_quarter_one, $session_company_currency) ?></td>
 
                             <?php
 
@@ -115,7 +115,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_amount_for_quarter_two, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $payment_amount_for_quarter_two, $session_company_currency) ?></td>
 
                             <?php
 
@@ -136,7 +136,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_amount_for_quarter_three, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $payment_amount_for_quarter_three, $session_company_currency) ?></td>
 
                             <?php
 
@@ -159,9 +159,9 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_amount_for_quarter_four, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $payment_amount_for_quarter_four, $session_company_currency) ?></td>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $total_payments_for_all_four_quarters, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $total_payments_for_all_four_quarters, $session_company_currency) ?></td>
                         </tr>
 
                         <?php
@@ -194,7 +194,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_one, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_one, $session_company_currency) ?></th>
 
                         <?php
 
@@ -216,7 +216,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_two, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_two, $session_company_currency) ?></th>
 
                         <?php
 
@@ -238,7 +238,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_three, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_three, $session_company_currency) ?></th>
 
                         <?php
 
@@ -262,9 +262,9 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_four, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $payment_total_amount_for_quarter_four, $session_company_currency) ?></th>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $total_payments_for_all_four_quarters, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $total_payments_for_all_four_quarters, $session_company_currency) ?></th>
                     </tr>
 
                     <tr>
@@ -274,11 +274,11 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
                     <?php
                     while ($row = mysqli_fetch_assoc($sql_categories_expense)) {
                         $category_id = intval($row['category_id']);
-                        $category_name = nullable_htmlentities($row['category_name']);
+                        $category_name = escapeHtml($row['category_name']);
                         ?>
 
                         <tr>
-                            <td><?php echo $category_name; ?></td>
+                            <td><?= $category_name ?></td>
 
                             <?php
 
@@ -292,7 +292,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_amount_for_quarter_one, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $expense_amount_for_quarter_one, $session_company_currency) ?></td>
 
                             <?php
 
@@ -306,7 +306,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_amount_for_quarter_two, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $expense_amount_for_quarter_two, $session_company_currency) ?></td>
 
                             <?php
 
@@ -320,7 +320,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_amount_for_quarter_three, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $expense_amount_for_quarter_three, $session_company_currency) ?></td>
 
                             <?php
 
@@ -336,9 +336,9 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                             ?>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_amount_for_quarter_four, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $expense_amount_for_quarter_four, $session_company_currency) ?></td>
 
-                            <td class="text-right"><?php echo numfmt_format_currency($currency_format, $total_expenses_for_all_four_quarters, $session_company_currency); ?></td>
+                            <td class="text-end"><?= numfmt_format_currency($currency_format, $total_expenses_for_all_four_quarters, $session_company_currency) ?></td>
                         </tr>
 
                         <?php
@@ -363,7 +363,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_one, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_one, $session_company_currency) ?></th>
 
                         <?php
 
@@ -377,7 +377,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_two, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_two, $session_company_currency) ?></th>
 
                         <?php
 
@@ -391,7 +391,7 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_three, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_three, $session_company_currency) ?></th>
 
                         <?php
 
@@ -407,9 +407,9 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
 
                         ?>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_four, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $expense_total_amount_for_quarter_four, $session_company_currency) ?></th>
 
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $total_expenses_for_all_four_quarters, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $total_expenses_for_all_four_quarters, $session_company_currency) ?></th>
                     </tr>
                     <tr>
                         <?php
@@ -421,11 +421,11 @@ $sql_categories_expense = mysqli_query($mysqli, "SELECT * FROM categories WHERE 
                         ?>
 
                         <th>Net Profit</th>
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $net_profit_quarter_one, $session_company_currency); ?></th>
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $net_profit_quarter_two, $session_company_currency); ?></th>
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $net_profit_quarter_three, $session_company_currency); ?></th>
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $net_profit_quarter_four, $session_company_currency); ?></th>
-                        <th class="text-right"><?php echo numfmt_format_currency($currency_format, $net_profit_year, $session_company_currency); ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $net_profit_quarter_one, $session_company_currency) ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $net_profit_quarter_two, $session_company_currency) ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $net_profit_quarter_three, $session_company_currency) ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $net_profit_quarter_four, $session_company_currency) ?></th>
+                        <th class="text-end"><?= numfmt_format_currency($currency_format, $net_profit_year, $session_company_currency) ?></th>
                     </tr>
                     </tbody>
                 </table>

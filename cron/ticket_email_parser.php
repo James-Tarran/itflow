@@ -15,8 +15,12 @@ if (php_sapi_name() !== 'cli') {
     die("This script must be run from the command line.\n");
 }
 
+// Prevent overlapping runs of this script
+$cron_lock_script = __FILE__;
+require_once "includes/cron_lock.php";
+
 // Autoload (Webklex & any composer deps)
-require_once "../plugins/vendor/autoload.php";
+require_once "../libs/vendor/autoload.php";
 
 // Get ITFlow config & helper functions
 require_once "../config.php";
@@ -28,51 +32,35 @@ require_once "../functions.php";
 // Get settings for the "default" company
 require_once "../includes/load_global_settings.php";
 
-$config_ticket_prefix = sanitizeInput($config_ticket_prefix);
-$config_ticket_from_name = sanitizeInput($config_ticket_from_name);
+$config_ticket_prefix = escapeSql($config_ticket_prefix);
+$config_ticket_from_name = escapeSql($config_ticket_from_name);
 $config_ticket_email_parse_unknown_senders = intval($row['config_ticket_email_parse_unknown_senders']);
 
 // Get company name & phone & timezone
-$sql = mysqli_query($mysqli, "SELECT * FROM companies, settings WHERE companies.company_id = settings.company_id AND companies.company_id = 1");
+$sql = mysqli_query($mysqli, "SELECT company_name, company_phone, company_phone_country_code FROM companies, settings WHERE companies.company_id = settings.company_id AND companies.company_id = 1");
 $row = mysqli_fetch_assoc($sql);
-$company_name = sanitizeInput($row['company_name']);
-$company_phone = sanitizeInput(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
+$company_name = escapeSql($row['company_name']);
+$company_phone = escapeSql(formatPhoneNumber($row['company_phone'], $row['company_phone_country_code']));
+
+// Check cron is enabled
+if ($config_enable_cron == 0) {
+    logApp("Cron-Email-Parser", "error", "Cron Email Parser unable to run - cron not enabled in admin settings.");
+    cronJobStop("Cron: is not enabled -- Quitting..");
+}
 
 // Check setting enabled
 if ($config_ticket_email_parse == 0) {
     logApp("Cron-Email-Parser", "error", "Cron Email Parser unable to run - not enabled in admin settings.");
-    exit("Email Parser: Feature is not enabled - check Settings > Ticketing > Email-to-ticket parsing. See https://docs.itflow.org/ticket_email_parse  -- Quitting..");
+    cronJobStop("Email Parser: Feature is not enabled - check Settings > Ticketing > Email-to-ticket parsing. See https://docs.itflow.org/ticket_email_parse  -- Quitting..");
 }
 
-// System temp directory & lock
-$temp_dir = sys_get_temp_dir();
-$lock_file_path = "{$temp_dir}/itflow_email_parser_{$installation_id}.lock";
-
-if (file_exists($lock_file_path)) {
-    $file_age = time() - filemtime($lock_file_path);
-    if ($file_age > 300) {
-        unlink($lock_file_path);
-        logApp("Cron-Email-Parser", "warning", "Cron Email Parser detected a lock file was present but was over 5 minutes old so it removed it.");
-    } else {
-        logApp("Cron-Email-Parser", "warning", "Lock file present. Cron Email Parser attempted to execute but was already executing, so instead it terminated.");
-        exit("Script is already running. Exiting.");
-    }
-}
-// Atomically create the lock ('x' fails if another process beat us to it)
-if (@fopen($lock_file_path, 'x') === false) {
-    logApp("Cron-Email-Parser", "warning", "Lock file present (race). Cron Email Parser attempted to execute but was already executing, so instead it terminated.");
-    exit("Script is already running. Exiting.");
-}
-
-// Ensure lock gets removed even on fatal error
-register_shutdown_function(function() use ($lock_file_path) {
-    if (file_exists($lock_file_path)) {
-        @unlink($lock_file_path);
-    }
-});
+// Overlapping runs are prevented by cron/includes/cron_lock.php. This script used to keep a
+// lock file of its own alongside that one, which needed a five minute age heuristic to
+// recover from a killed run and could only end itself with exit() - fatal to a dispatched
+// job. flock covers the same ground and the kernel drops it however the process ends.
 
 // Allowed attachment extensions
-$allowed_extensions = array('jpg', 'jpeg', 'gif', 'png', 'webp', 'svg', 'pdf', 'txt', 'md', 'doc', 'docx', 'csv', 'xls', 'xlsx', 'xlsm', 'zip', 'tar', 'gz');
+$allowed_extensions = array('jpg', 'jpeg', 'gif', 'png', 'webp', 'pdf', 'txt', 'md', 'doc', 'docx', 'csv', 'xls', 'xlsx', 'xlsm', 'zip', 'tar', 'gz');
 
 // Processing limits
 $max_emails_per_run = 50;          // Cap per cron run to bound memory usage (cron catches up on the next run)
@@ -118,11 +106,12 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
 
     $url_key = randomString(32);
 
-    mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Low', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id");
+    mysqli_query($mysqli, "INSERT INTO tickets SET ticket_prefix = '$ticket_prefix_esc', ticket_number = $ticket_number, ticket_source = 'Email', ticket_subject = '$subject', ticket_details = '$message_esc', ticket_priority = 'Medium', ticket_status = 1, ticket_billable = $config_ticket_default_billable, ticket_created_by = 0, ticket_contact_id = $contact_id, ticket_url_key = '$url_key', ticket_client_id = $client_id");
     $id = mysqli_insert_id($mysqli);
+    applyTicketSla($id);
 
     // Logging
-    logAction("Ticket", "Create", "Email parser: Client contact $contact_email_esc created ticket $ticket_prefix_esc$ticket_number ($subject) ($id)", $client_id, $id);
+    logAudit("Ticket", "Create", "Email parser: Client contact $contact_email_esc created ticket $ticket_prefix_esc$ticket_number ($subject) ($id)", $client_id, $id);
 
     mkdirMissing('../uploads/tickets/');
     $att_dir = "../uploads/tickets/" . $id . "/";
@@ -143,15 +132,15 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
             $att_saved_path = $att_dir . $att_saved_filename;
             file_put_contents($att_saved_path, $attachment['content']);
 
-            $ticket_attachment_name = sanitizeInput($att_name);
-            $ticket_attachment_reference_name = sanitizeInput($att_saved_filename);
+            $ticket_attachment_name = escapeSql($att_name);
+            $ticket_attachment_reference_name = escapeSql($att_saved_filename);
 
             $ticket_attachment_name_esc = mysqli_real_escape_string($mysqli, $ticket_attachment_name);
             $ticket_attachment_reference_name_esc = mysqli_real_escape_string($mysqli, $ticket_attachment_reference_name);
             mysqli_query($mysqli, "INSERT INTO ticket_attachments SET ticket_attachment_name = '$ticket_attachment_name_esc', ticket_attachment_reference_name = '$ticket_attachment_reference_name_esc', ticket_attachment_ticket_id = $id");
         } else {
             $ticket_attachment_name_esc = mysqli_real_escape_string($mysqli, $att_name);
-            logAction("Ticket", "Edit", "Email parser: Blocked attachment $ticket_attachment_name_esc from Client contact $contact_email_esc for ticket $ticket_prefix_esc$ticket_number", $client_id, $id);
+            logAudit("Ticket", "Edit", "Email parser: Blocked attachment $ticket_attachment_name_esc from Client contact $contact_email_esc for ticket $ticket_prefix_esc$ticket_number", $client_id, $id);
         }
     }
 
@@ -172,7 +161,9 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
     $data = [];
     if ($config_ticket_client_general_notifications == 1 && !preg_match($bad_pattern, $contact_email)) {
         $subject_email = "Ticket created - [$config_ticket_prefix$ticket_number] - $subject";
-        $body = "<i style='color: #808080'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Thank you for your email. A ticket regarding \"$subject\" has been automatically created for you.<br><br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $subject<br>Status: New<br>Portal: <a href='https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key'>View ticket</a><br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
+        // SLA response commitment for this client + priority, empty when no SLA applies
+        $sla_notice = getTicketSlaEmailNotice($id, $company_phone);
+        $body = "<i style='color: #808080'>##- Please type your reply above this line -##</i><br><br>Hello $contact_name,<br><br>Thank you for your email. A ticket regarding \"$subject\" has been automatically created for you.<br><br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $subject<br>Status: New<br>Portal: <a href='https://$config_base_url/guest/guest_view_ticket.php?ticket_id=$id&url_key=$url_key'>View ticket</a>$sla_notice<br><br>--<br>$company_name - Support<br>$config_ticket_from_email<br>$company_phone";
         $data[] = [
             'from' => $config_ticket_from_email,
             'from_name' => $config_ticket_from_name,
@@ -191,7 +182,7 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
         } else {
             $client_sql = mysqli_query($mysqli, "SELECT client_name FROM clients WHERE client_id = $client_id");
             $client_row = mysqli_fetch_assoc($client_sql);
-            $client_name = sanitizeInput($client_row['client_name']);
+            $client_name = escapeSql($client_row['client_name']);
             $client_uri = "&client_id=$client_id";
         }
         $email_subject = "$config_app_name - New Ticket - $client_name: $subject";
@@ -208,7 +199,7 @@ function addTicket($contact_id, $contact_name, $contact_email, $client_id, $date
     }
 
     addToMailQueue($data);
-    customAction('ticket_create', $id);
+    triggerCustomAction('ticket_create', $id);
 
     return true;
 }
@@ -260,17 +251,17 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
 
     if ($row) {
         $ticket_id = intval($row['ticket_id']);
-        $ticket_subject = sanitizeInput($row['ticket_subject']);
-        $ticket_status = sanitizeInput($row['ticket_status']);
+        $ticket_subject = escapeSql($row['ticket_subject']);
+        $ticket_status = escapeSql($row['ticket_status']);
         $ticket_reply_contact = intval($row['ticket_contact_id']);
-        $ticket_contact_email = sanitizeInput($row['contact_email']);
+        $ticket_contact_email = escapeSql($row['contact_email']);
         $client_id = intval($row['ticket_client_id']);
         if ($client_id) {
             $client_uri = "&client_id=$client_id";
         } else {
             $client_uri = '';
         }
-        $client_name = sanitizeInput($row['client_name']);
+        $client_name = escapeSql($row['client_name']);
 
         if ($ticket_status == 5) {
             $config_ticket_prefix_esc = mysqli_real_escape_string($mysqli, $config_ticket_prefix);
@@ -324,15 +315,15 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
                 $att_saved_path = $ticket_dir . $att_saved_filename;
                 file_put_contents($att_saved_path, $attachment['content']);
 
-                $ticket_attachment_name = sanitizeInput($att_name);
-                $ticket_attachment_reference_name = sanitizeInput($att_saved_filename);
+                $ticket_attachment_name = escapeSql($att_name);
+                $ticket_attachment_reference_name = escapeSql($att_saved_filename);
 
                 $ticket_attachment_name_esc = mysqli_real_escape_string($mysqli, $ticket_attachment_name);
                 $ticket_attachment_reference_name_esc = mysqli_real_escape_string($mysqli, $ticket_attachment_reference_name);
                 mysqli_query($mysqli, "INSERT INTO ticket_attachments SET ticket_attachment_name = '$ticket_attachment_name_esc', ticket_attachment_reference_name = '$ticket_attachment_reference_name_esc', ticket_attachment_reply_id = $reply_id, ticket_attachment_ticket_id = $ticket_id");
             } else {
                 $ticket_attachment_name_esc = mysqli_real_escape_string($mysqli, $att_name);
-                logAction("Ticket", "Edit", "Email parser: Blocked attachment $ticket_attachment_name_esc from Client contact $from_email_esc for ticket $config_ticket_prefix$ticket_number_esc", $client_id, $ticket_id);
+                logAudit("Ticket", "Edit", "Email parser: Blocked attachment $ticket_attachment_name_esc from Client contact $from_email_esc for ticket $config_ticket_prefix$ticket_number_esc", $client_id, $ticket_id);
             }
         }
 
@@ -344,8 +335,8 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
             if ($ticket_assigned_to) {
                 $tech_sql = mysqli_query($mysqli, "SELECT user_email, user_name FROM users WHERE user_id = $ticket_assigned_to LIMIT 1");
                 $tech_row = mysqli_fetch_assoc($tech_sql);
-                $tech_email = sanitizeInput($tech_row['user_email']);
-                $tech_name = sanitizeInput($tech_row['user_name']);
+                $tech_email = escapeSql($tech_row['user_email']);
+                $tech_name = escapeSql($tech_row['user_name']);
 
                 $email_subject = "$config_app_name - Ticket updated - [$config_ticket_prefix$ticket_number] $ticket_subject";
                 $email_body    = "Hello $tech_name,<br><br>A new reply has been added to the below ticket.<br><br>Client: $client_name<br>Ticket: $config_ticket_prefix$ticket_number<br>Subject: $ticket_subject<br>Link: https://$config_base_url/agent/ticket.php?ticket_id=$ticket_id$client_uri<br><br>--------------------------------<br>$message_esc";
@@ -365,9 +356,15 @@ function addReply($from_email, $date, $subject, $ticket_number, $message, $attac
         }
 
         mysqli_query($mysqli, "UPDATE tickets SET ticket_status = 2, ticket_resolved_at = NULL WHERE ticket_id = $ticket_id AND ticket_client_id = $client_id LIMIT 1");
+        resetTicketResolutionSla($ticket_id);
 
-        logAction("Ticket", "Edit", "Email parser: Client contact $from_email_esc updated ticket $config_ticket_prefix$ticket_number_esc ($subject)", $client_id, $ticket_id);
-        customAction('ticket_reply_client', $ticket_id);
+        // Only record the reopen when the ticket was not already open
+        if (intval($ticket_status) !== 2) {
+            logTicketHistory($ticket_id, "$from_email_esc replied by email, reopening the ticket");
+        }
+
+        logAudit("Ticket", "Edit", "Email parser: Client contact $from_email_esc updated ticket $config_ticket_prefix$ticket_number_esc ($subject)", $client_id, $ticket_id);
+        triggerCustomAction('ticket_reply_client', $ticket_id);
         return true;
     } else {
         return false;
@@ -388,19 +385,6 @@ function tokenExpired(?string $expires_at): bool {
 }
 
 // very small form-encoded POST helper using curl
-function httpFormPost(string $url, array $fields): array {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($fields, '', '&'));
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-    $raw = curl_exec($ch);
-    $err = curl_error($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return ['ok' => ($raw !== false && $code >= 200 && $code < 300), 'body' => $raw, 'code' => $code, 'err' => $err];
-}
-
 /**
  * Get a valid access token for Google Workspace IMAP via refresh token if needed.
  * Uses settings: config_mail_oauth_client_id / _client_secret / _refresh_token / _access_token / _access_token_expires_at
@@ -535,8 +519,7 @@ if ($imap_provider === null) $imap_provider = '';
 if ($imap_provider === '') {
     // IMAP disabled by admin: exit cleanly
     logApp("Cron-Email-Parser", "info", "IMAP polling skipped: provider not configured.");
-    @unlink($lock_file_path);
-    exit(0);
+    cronJobStop();
 }
 
 /** ------------------------------------------------------------------
@@ -562,8 +545,7 @@ if ($imap_provider === 'google_oauth') {
     $pass = getGoogleAccessToken($user);
     if (empty($pass)) {
         logApp("Cron-Email-Parser", "error", "Google OAuth: no usable access token (check refresh token/client credentials).");
-        @unlink($lock_file_path);
-        exit(1);
+        cronJobStop('', 1);
     }
 } elseif ($imap_provider === 'microsoft_oauth') {
     $host = 'outlook.office365.com';
@@ -573,15 +555,13 @@ if ($imap_provider === 'google_oauth') {
     $pass = getMicrosoftAccessToken($user);
     if (empty($pass)) {
         logApp("Cron-Email-Parser", "error", "Microsoft OAuth: no usable access token (check refresh token/client credentials/tenant).");
-        @unlink($lock_file_path);
-        exit(1);
+        cronJobStop('', 1);
     }
 } else {
     // standard_imap (username/password)
     if (empty($host) || empty($port) || empty($user)) {
         logApp("Cron-Email-Parser", "error", "Standard IMAP: missing host/port/username.");
-        @unlink($lock_file_path);
-        exit(1);
+        cronJobStop('', 1);
     }
 }
 
@@ -608,19 +588,73 @@ try {
     $mailbox->connect();
 } catch (\Throwable $e) {
     echo "Error connecting to IMAP server: " . $e->getMessage();
-    @unlink($lock_file_path);
-    exit(1);
+    cronJobStop('', 1);
 }
 
 $inbox = $mailbox->inbox();
 
-$targetFolderPath = 'ITFlow';
+// Resolve the processed-mail folder in a namespace-aware way.
+// Most servers (Gmail, M365, Dovecot with an empty namespace prefix) allow
+// root-level folders, so "ITFlow" is preferred. cPanel-style Dovecot uses a
+// Maildir++ layout where the personal namespace prefix is "INBOX." - root
+// CREATE fails there with "Client tried to access nonexistent namespace",
+// and the folder must be addressed as "INBOX.ITFlow" (clients still display
+// it as a top-level folder alongside Inbox).
+$targetFolderName = 'ITFlow';
 try {
-    $targetFolder = $mailbox->folders()->firstOrCreate($targetFolderPath);
+    // INBOX always exists (RFC 3501) - use it to learn the hierarchy delimiter
+    // (ImapEngine returns the literal string "NIL" for servers with a flat namespace)
+    $delimiter = $mailbox->folders()->findOrFail('INBOX')->delimiter();
+    if ($delimiter === '' || strcasecmp($delimiter, 'NIL') === 0) {
+        $delimiter = '.';
+    }
+
+    // Candidate paths, in order of preference
+    $candidates = [
+        $targetFolderName,                              // Root-level (empty namespace prefix)
+        'INBOX' . $delimiter . $targetFolderName,       // INBOX-prefixed namespace (e.g. cPanel Dovecot)
+    ];
+
+    // Re-use the folder if it already exists at either location
+    $targetFolder = null;
+    foreach ($candidates as $candidate) {
+        if ($targetFolder = $mailbox->folders()->find($candidate)) {
+            $targetFolderPath = $candidate;
+            break;
+        }
+    }
+
+    // Otherwise create it, falling back to the namespace-prefixed path if the
+    // server rejects root-level creation
+    if (!$targetFolder) {
+        $creation_errors = [];
+        foreach ($candidates as $candidate) {
+            try {
+                $targetFolder = $mailbox->folders()->create($candidate);
+                $targetFolderPath = $candidate;
+                break;
+            } catch (\Throwable $e) {
+                $creation_errors[] = "[$candidate]: " . $e->getMessage();
+            }
+        }
+        if (!$targetFolder) {
+            throw new \Exception("CREATE rejected for all candidate paths - " . implode(' / ', $creation_errors));
+        }
+
+        // Subscribe to the newly created folder so it's visible in mail clients
+        // that only display subscribed folders (common with Dovecot/Roundcube).
+        // Non-fatal - some servers ignore or reject SUBSCRIBE entirely.
+        try {
+            $mailbox->connection()->subscribe(
+                \DirectoryTree\ImapEngine\Support\Str::toImapUtf7($targetFolderPath)
+            );
+        } catch (\Throwable $e) {
+            logApp("Cron-Email-Parser", "warning", "Created folder [$targetFolderPath] but could not subscribe to it: " . $e->getMessage());
+        }
+    }
 } catch (\Throwable $e) {
-    logApp("Cron-Email-Parser", "error", "Unable to find/create target folder [$targetFolderPath]: " . $e->getMessage());
-    @unlink($lock_file_path);
-    exit(1);
+    logApp("Cron-Email-Parser", "error", "Unable to find/create target folder [$targetFolderName]: " . $e->getMessage());
+    cronJobStop('', 1);
 }
 
 // Fetch unseen messages (headers, body & flags; BODY.PEEK so they stay unread)
@@ -647,21 +681,28 @@ foreach ($messages as $message) {
 
         // From
         $from_addr  = $message->from(); // ?Address
-        $from_email = sanitizeInput($from_addr?->email() ?: 'itflow-guest@example.com');
-        $from_name  = sanitizeInput($from_addr?->name() ?: 'Unknown');
+        $from_email = escapeSql($from_addr?->email() ?: 'itflow-guest@example.com');
+        $from_name  = escapeSql($from_addr?->name() ?: 'Unknown');
 
         $from_domain = explode("@", $from_email);
-        $from_domain = sanitizeInput(end($from_domain));
+        $from_domain = escapeSql(end($from_domain));
 
         // Subject
-        $subject = sanitizeInput((string)$message->subject() ?: 'No Subject');
+        $subject = escapeSql((string)$message->subject() ?: 'No Subject');
 
         // Skip vacation/out-of-office auto-responders to prevent mail loops (RFC 3834)
-        // NDRs use "auto-generated" and are still handled by the NDR logic below
+        // Some* NDRs use "auto-generated" and are still handled by the NDR logic below
+        // Todo: Combine with the NDR logic so we can update the ticket too
         $auto_submitted = strtolower((string)($message->header('Auto-Submitted')?->getValue() ?? ''));
         $precedence     = strtolower((string)($message->header('Precedence')?->getValue() ?? ''));
         if (str_starts_with($auto_submitted, 'auto-replied') || $precedence === 'auto_reply') {
             logApp("Cron-Email-Parser", "info", "Email parser skipped auto-responder from $from_email ($subject)");
+                appNotify(
+                    "Mail",
+                    "Email parser: Skipped auto-responder message from $from_email. Subject: $subject",
+                    "",
+                    0
+                );
             $processed_count++;
             $message->markSeen();
             $message->move($targetFolderPath);
@@ -685,7 +726,7 @@ foreach ($messages as $message) {
 
         // Date (string)
         $dateObj = $message->date(); // ?CarbonInterface
-        $date    = sanitizeInput($dateObj ? $dateObj->setTimezone(date_default_timezone_get())->format('Y-m-d H:i:s') : date('Y-m-d H:i:s'));
+        $date    = escapeSql($dateObj ? $dateObj->setTimezone(date_default_timezone_get())->format('Y-m-d H:i:s') : date('Y-m-d H:i:s'));
 
         // Body (prefer HTML)
         $message_body_html = $message->html();
@@ -712,7 +753,7 @@ foreach ($messages as $message) {
 
             // Skip oversized attachments entirely
             if ($size > $max_attachment_bytes) {
-                logApp("Cron-Email-Parser", "warning", "Email parser skipped oversized attachment " . sanitizeInput($name) . " (" . round($size / 1048576, 1) . " MB) from $from_email ($subject)");
+                logApp("Cron-Email-Parser", "warning", "Email parser skipped oversized attachment " . escapeSql($name) . " (" . round($size / 1048576, 1) . " MB) from $from_email ($subject)");
                 continue;
             }
 
@@ -752,7 +793,7 @@ foreach ($messages as $message) {
             } else {
                 // Else: check if sender domain is registered
                 $from_domain_esc = mysqli_real_escape_string($mysqli, $from_domain);
-                $domain_sql = mysqli_query($mysqli, "SELECT * FROM domains WHERE domain_name = '$from_domain_esc' AND domain_archived_at IS NULL LIMIT 1");
+                $domain_sql = mysqli_query($mysqli, "SELECT domain_client_id, domain_name FROM domains WHERE domain_name = '$from_domain_esc' AND domain_archived_at IS NULL LIMIT 1");
                 $domain_row = mysqli_fetch_assoc($domain_sql);
 
                 if ($domain_row && $from_domain == $domain_row['domain_name']) {
@@ -792,9 +833,9 @@ foreach ($messages as $message) {
             $rowc = mysqli_fetch_assoc($any_contact_sql);
 
             if ($rowc) {
-                $contact_name  = sanitizeInput($rowc['contact_name']);
+                $contact_name  = escapeSql($rowc['contact_name']);
                 $contact_id    = intval($rowc['contact_id']);
-                $contact_email = sanitizeInput($rowc['contact_email']);
+                $contact_email = escapeSql($rowc['contact_email']);
                 $client_id     = intval($rowc['contact_client_id']);
 
                 $email_processed = addTicket($contact_id, $contact_name, $contact_email, $client_id, $date, $subject, $message_body, $attachments, $original_message_file, $ccs);
@@ -804,7 +845,7 @@ foreach ($messages as $message) {
         // 4. A known domain?
         if (!$email_processed) {
             $from_domain_esc = mysqli_real_escape_string($mysqli, $from_domain);
-            $domain_sql = mysqli_query($mysqli, "SELECT * FROM domains WHERE domain_name = '$from_domain_esc' AND domain_archived_at IS NULL LIMIT 1");
+            $domain_sql = mysqli_query($mysqli, "SELECT domain_client_id, domain_name FROM domains WHERE domain_name = '$from_domain_esc' AND domain_archived_at IS NULL LIMIT 1");
             $rowd = mysqli_fetch_assoc($domain_sql);
 
             if ($rowd && $from_domain == $rowd['domain_name']) {
@@ -816,8 +857,8 @@ foreach ($messages as $message) {
                 mysqli_query($mysqli, "INSERT INTO contacts SET contact_name = '".mysqli_real_escape_string($mysqli, $contact_name)."', contact_email = '".mysqli_real_escape_string($mysqli, $contact_email)."', contact_notes = 'Added automatically via email parsing.', contact_client_id = $client_id");
                 $contact_id = mysqli_insert_id($mysqli);
 
-                logAction("Contact", "Create", "Email parser: created contact " . mysqli_real_escape_string($mysqli, $contact_name), $client_id, $contact_id);
-                customAction('contact_create', $contact_id);
+                logAudit("Contact", "Create", "Email parser: created contact " . mysqli_real_escape_string($mysqli, $contact_name), $client_id, $contact_id);
+                triggerCustomAction('contact_create', $contact_id);
 
                 $email_processed = addTicket($contact_id, $contact_name, $contact_email, $client_id, $date, $subject, $message_body, $attachments, $original_message_file, $ccs);
             }
@@ -850,15 +891,15 @@ foreach ($messages as $message) {
                     if (strpos($ctype, 'delivery-status') !== false) {
 
                         if (preg_match('/Final-Recipient:\s*rfc822;\s*(.+)/i', $body, $m)) {
-                            $failed_recipient = sanitizeInput(trim($m[1]));
+                            $failed_recipient = escapeSql(trim($m[1]));
                         }
 
                         if (preg_match('/Diagnostic-Code:\s*(.+)/i', $body, $m)) {
-                            $diagnostic_code = sanitizeInput(trim($m[1]));
+                            $diagnostic_code = escapeSql(trim($m[1]));
                         }
 
                         if (preg_match('/Status:\s*([0-9\.]+)/i', $body, $m)) {
-                            $status_code = sanitizeInput(trim($m[1]));
+                            $status_code = escapeSql(trim($m[1]));
                         }
                     }
 
@@ -866,11 +907,11 @@ foreach ($messages as $message) {
                     if (strpos($ctype, 'message/rfc822') !== false) {
 
                         if (preg_match('/^To:\s*(.+)$/mi', $body, $m)) {
-                            $original_to = sanitizeInput(trim($m[1]));
+                            $original_to = escapeSql(trim($m[1]));
                         }
 
                         if (preg_match('/^Subject:\s*(.+)$/mi', $body, $m)) {
-                            $original_subject = sanitizeInput(trim($m[1]));
+                            $original_subject = escapeSql(trim($m[1]));
                         }
                     }
                 }
@@ -881,7 +922,7 @@ foreach ($messages as $message) {
 
                     // Exim puts diagnostics on an indented line
                     if (preg_match('/\n\s{2,}(.+)/', $text, $m)) {
-                        $diagnostic_code = sanitizeInput(trim($m[1]));
+                        $diagnostic_code = escapeSql(trim($m[1]));
                     }
                 }
 
@@ -893,7 +934,7 @@ foreach ($messages as $message) {
 
                 appNotify(
                     "Ticket",
-                    "Email parser NDR: Message to $failed_recipient bounced. Subject: $original_subject Diagnostics: $status_code / $diagnostic_code - check ITFlow folder manually to see email",
+                    "Email parser: NDR - Message to $failed_recipient bounced. Subject: $original_subject Diagnostics: $status_code / $diagnostic_code - check ITFlow folder manually to see email",
                     "",
                     0
                 );
@@ -992,13 +1033,6 @@ if ($processed_count || $unprocessed_count) {
     logApp("Cron-Email-Parser", "info", "Cron Email Parser executed in $execution_time_formatted seconds. $processed_info");
 }
 
-// Remove the lock file
-unlink($lock_file_path);
-
 // DEBUG
-echo "\nLock File Path: $lock_file_path\n";
-if (file_exists($lock_file_path)) {
-    echo "\nLock is present\n\n";
-}
 echo "Processed Emails: $processed_count\n";
 echo "Unprocessed Emails: $unprocessed_count\n";

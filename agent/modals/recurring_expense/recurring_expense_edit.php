@@ -2,67 +2,72 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_financial', 2);
+
 $recurring_expense_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT * FROM recurring_expenses WHERE recurring_expense_id = $recurring_expense_id LIMIT 1");
+$sql = mysqli_query($mysqli, "SELECT recurring_expense_account_id, recurring_expense_amount, recurring_expense_category_id,
+    recurring_expense_client_id, recurring_expense_created_at, recurring_expense_currency_code,
+    recurring_expense_day, recurring_expense_description, recurring_expense_frequency,
+    recurring_expense_last_sent, recurring_expense_month, recurring_expense_next_date,
+    recurring_expense_payment_method, recurring_expense_reference, recurring_expense_status,
+    recurring_expense_vendor_id FROM recurring_expenses WHERE recurring_expense_id = $recurring_expense_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
 $recurring_expense_frequency = intval($row['recurring_expense_frequency']);
 $recurring_expense_day = intval($row['recurring_expense_day']);
 $recurring_expense_month = intval($row['recurring_expense_month']);
-$recurring_expense_last_sent = nullable_htmlentities($row['recurring_expense_last_sent']);
-$recurring_expense_next_date = nullable_htmlentities($row['recurring_expense_next_date']);
+$recurring_expense_last_sent = escapeHtml($row['recurring_expense_last_sent']);
+$recurring_expense_next_date = escapeHtml($row['recurring_expense_next_date']);
 $recurring_expense_next_month = date('n', strtotime($row['recurring_expense_next_date']));
 $recurring_expense_status = intval($row['recurring_expense_status']);
-$recurring_expense_description = nullable_htmlentities($row['recurring_expense_description']);
+$recurring_expense_description = escapeHtml($row['recurring_expense_description']);
 $recurring_expense_amount = floatval($row['recurring_expense_amount']);
-$recurring_expense_payment_method = nullable_htmlentities($row['recurring_expense_payment_method']);
-$recurring_expense_reference = nullable_htmlentities($row['recurring_expense_reference']);
-$recurring_expense_currency_code = nullable_htmlentities($row['recurring_expense_currency_code']);
-$recurring_expense_created_at = nullable_htmlentities($row['recurring_expense_created_at']);
+$recurring_expense_payment_method = escapeHtml($row['recurring_expense_payment_method']);
+$recurring_expense_reference = escapeHtml($row['recurring_expense_reference']);
+$recurring_expense_currency_code = escapeHtml($row['recurring_expense_currency_code']);
+$recurring_expense_created_at = escapeHtml($row['recurring_expense_created_at']);
 $recurring_expense_vendor_id = intval($row['recurring_expense_vendor_id']);
 $recurring_expense_category_id = intval($row['recurring_expense_category_id']);
 $recurring_expense_account_id = intval($row['recurring_expense_account_id']);
-$recurring_expense_client_id = intval($row['recurring_expense_client_id']);
+$client_id = intval($row['recurring_expense_client_id']);
 
-// Generate the HTML form content using output buffering.
+if ($client_id) {
+    enforceClientAccess();
+}
+
 ob_start();
+
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title text-white"><i class="fa fa-fw fa-clock mr-2"></i>Editing recurring expense</h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title text-white"><i class="fa fa-fw fa-clock me-2"></i>Editing recurring expense</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-    <input type="hidden" name="recurring_expense_id" value="<?php echo $recurring_expense_id; ?>">
+    <input type="hidden" name="recurring_expense_id" value="<?= $recurring_expense_id ?>">
 
     <div class="modal-body">
 
-        <div class="form-row">
+        <div class="row g-2">
 
-            <div class="form-group col-md">
+            <div class="mb-3 col-md">
                 <label>Frequency <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-sync-alt"></i></span>
-                    </div>
-                    <select class="form-control select2" name="frequency" required>
+                    <select class="form-select select2" name="frequency" required>
                         <option value="1" <?php if($recurring_expense_frequency == 1) { echo "selected"; } ?>>Monthly</option>
                         <option value="2" <?php if($recurring_expense_frequency == 2) { echo "selected"; } ?>>Annually</option>
                     </select>
                 </div>
             </div>
 
-            <div class="form-group col-md">
+            <div class="mb-3 col-md">
                 <label>Month <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-calendar"></i></span>
-                    </div>
-                    <select class="form-control select2" name="month" required>
+                    <select class="form-select select2" name="month" required>
                         <option value="">- Select a Month -</option>
                         <option value="1" <?php if($recurring_expense_next_month == 1) { echo "selected"; } ?>>01 - January</option>
                         <option value="2" <?php if($recurring_expense_next_month == 2) { echo "selected"; } ?>>02 - February</option>
@@ -80,46 +85,40 @@ ob_start();
                 </div>
             </div>
 
-            <div class="form-group col-md">
+            <div class="mb-3 col-md">
                 <label>Day <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-calendar"></i></span>
-                    </div>
-                    <input type="text" class="form-control" inputmode="numeric" pattern="(1[0-9]|2[0-8]|[1-9])" name="day" placeholder="Enter a day (1-28)" value="<?php echo $recurring_expense_day; ?>" required>
+                    <input type="text" class="form-control" inputmode="numeric" pattern="(1[0-9]|2[0-8]|[1-9])" name="day" placeholder="Enter a day (1-28)" value="<?= $recurring_expense_day ?>" required>
                 </div>
             </div>
 
         </div>
 
-        <div class="form-row">
-            <div class="form-group col-md">
+        <div class="row g-2">
+            <div class="mb-3 col-md">
                 <label>Amount <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-dollar-sign"></i></span>
-                    </div>
-                    <input type="text" class="form-control" inputmode="decimal" pattern="-?[0-9]*\.?[0-9]{0,2}" name="amount" value="<?php echo number_format($recurring_expense_amount, 2, '.', ''); ?>" required>
+                    <input type="text" class="form-control" inputmode="decimal" pattern="-?[0-9]*\.?[0-9]{0,2}" name="amount" value="<?= number_format($recurring_expense_amount, 2, '.', '') ?>" required>
                 </div>
             </div>
         </div>
 
-        <div class="form-row">
-            <div class="form-group col-md">
+        <div class="row g-2">
+            <div class="mb-3 col-md">
                 <label>Account <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-piggy-bank"></i></span>
-                    </div>
-                    <select class="form-control select2" name="account" required>
+                    <select class="form-select select2" name="account" required>
                         <?php
 
                         $sql_accounts = mysqli_query($mysqli, "SELECT account_id, account_name, opening_balance, account_archived_at FROM accounts WHERE (account_archived_at > '$recurring_expense_created_at' OR account_archived_at IS NULL) ORDER BY account_archived_at ASC, account_name ASC");
                         while ($row = mysqli_fetch_assoc($sql_accounts)) {
                             $account_id_select = intval($row['account_id']);
-                            $account_name_select = nullable_htmlentities($row['account_name']);
+                            $account_name_select = escapeHtml($row['account_name']);
                             $opening_balance = floatval($row['opening_balance']);
-                            $account_archived_at = nullable_htmlentities($row['account_archived_at']);
+                            $account_archived_at = escapeHtml($row['account_archived_at']);
                             if (empty($account_archived_at)) {
                                 $account_archived_display = "";
                             } else {
@@ -141,7 +140,7 @@ ob_start();
                             $balance = $opening_balance + $total_payments + $total_revenues - $total_expenses;
 
                             ?>
-                            <option <?php if ($recurring_expense_account_id == $account_id_select) { ?> selected <?php } ?> value="<?php echo $account_id_select; ?>"><?php echo "$account_archived_display$account_name_select"; ?> [$<?php echo number_format($balance, 2); ?>]</option>
+                            <option <?php if ($recurring_expense_account_id == $account_id_select) { ?> selected <?php } ?> value="<?= $account_id_select ?>"><?= "$account_archived_display$account_name_select" ?> [$<?= number_format($balance, 2) ?>]</option>
                             <?php
                         }
 
@@ -150,100 +149,88 @@ ob_start();
                 </div>
             </div>
 
-            <div class="form-group col-md">
+            <div class="mb-3 col-md">
                 <label>Vendor <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-building"></i></span>
-                    </div>
-                    <select class="form-control select2" name="vendor" required>
+                    <select class="form-select select2" name="vendor" required>
                         <?php
 
                         $sql_select = mysqli_query($mysqli, "SELECT vendor_id, vendor_name FROM vendors WHERE vendor_client_id = 0 AND (vendor_archived_at > '$recurring_expense_created_at' OR vendor_archived_at IS NULL) ORDER BY vendor_name ASC");
                         while ($row = mysqli_fetch_assoc($sql_select)) {
                             $vendor_id_select = intval($row['vendor_id']);
-                            $vendor_name_select = nullable_htmlentities($row['vendor_name']);
+                            $vendor_name_select = escapeHtml($row['vendor_name']);
                             ?>
-                            <option <?php if ($recurring_expense_vendor_id == $vendor_id_select) { ?> selected <?php } ?> value="<?php echo $vendor_id_select; ?>"><?php echo $vendor_name_select; ?></option>
+                            <option <?php if ($recurring_expense_vendor_id == $vendor_id_select) { ?> selected <?php } ?> value="<?= $vendor_id_select ?>"><?= $vendor_name_select ?></option>
                             <?php
                         }
 
                         ?>
                     </select>
-                    <div class="input-group-append">
                         <a class="btn btn-secondary" href="vendors.php" target="_blank"><i class="fas fa-fw fa-plus"></i></a>
-                    </div>
                 </div>
             </div>
 
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Description <strong class="text-danger">*</strong></label>
-            <textarea class="form-control" rows="6" name="description" placeholder="Enter a description" required><?php echo $recurring_expense_description; ?></textarea>
+            <textarea class="form-control" rows="6" name="description" placeholder="Enter a description" required><?= $recurring_expense_description ?></textarea>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Reference</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-file-alt"></i></span>
-                </div>
-                <input type="text" class="form-control" name="reference" placeholder="Enter a reference" maxlength="200" value="<?php echo $recurring_expense_reference; ?>">
+                <input type="text" class="form-control" name="reference" placeholder="Enter a reference" maxlength="200" value="<?= $recurring_expense_reference ?>">
             </div>
         </div>
 
-        <div class="form-row">
+        <div class="row g-2">
 
-            <div class="form-group col-md">
+            <div class="mb-3 col-md">
                 <label>Category <strong class="text-danger">*</strong></label>
                 <div class="input-group">
-                    <div class="input-group-prepend">
                         <span class="input-group-text"><i class="fa fa-fw fa-list"></i></span>
-                    </div>
-                    <select class="form-control select2" name="category" required>
+                    <select class="form-select select2" name="category" required>
                         <?php
 
                         $sql_select = mysqli_query($mysqli, "SELECT category_id, category_name FROM categories WHERE category_type = 'Expense' AND (category_archived_at > '$recurring_expense_created_at' OR category_archived_at IS NULL) ORDER BY category_name ASC");
                         while ($row = mysqli_fetch_assoc($sql_select)) {
                             $category_id_select = intval($row['category_id']);
-                            $category_name_select = nullable_htmlentities($row['category_name']);
+                            $category_name_select = escapeHtml($row['category_name']);
                             ?>
-                            <option <?php if ($recurring_expense_category_id == $category_id_select) { ?> selected <?php } ?> value="<?php echo $category_id_select; ?>"><?php echo $category_name_select; ?></option>
+                            <option <?php if ($recurring_expense_category_id == $category_id_select) { ?> selected <?php } ?> value="<?= $category_id_select ?>"><?= $category_name_select ?></option>
                             <?php
                         }
 
                         ?>
                     </select>
-                    <div class="input-group-append">
                         <button class="btn btn-secondary ajax-modal" type="button"
                             data-modal-url="../admin/modals/category/category_add.php?category=Expense">
                             <i class="fas fa-plus"></i>
                         </button>
-                    </div>
                 </div>
             </div>
 
             <?php if (isset($_GET['client_id'])) { ?>
-                <input type="hidden" name="client" value="<?php echo $client_id; ?>">
+                <input type="hidden" name="client" value="<?= $client_id ?>">
             <?php } else { ?>
 
-                <div class="form-group col-md">
+                <div class="mb-3 col-md">
                     <label>Client</label>
                     <div class="input-group">
-                        <div class="input-group-prepend">
                             <span class="input-group-text"><i class="fa fa-fw fa-user"></i></span>
-                        </div>
-                        <select class="form-control select2" name="client">
+                        <select class="form-select select2" name="client_id">
                             <option value="">- Select Client -</option>
                             <?php
 
-                            $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients ORDER BY client_name ASC");
+                            $sql_clients = mysqli_query($mysqli, "SELECT client_id, client_name FROM clients WHERE 1 = 1 " . clientScopeSql('clients.client_id') . " ORDER BY client_name ASC");
                             while ($row = mysqli_fetch_assoc($sql_clients)) {
                                 $client_id_select = intval($row['client_id']);
-                                $client_name_select = nullable_htmlentities($row['client_name']);
+                                $client_name_select = escapeHtml($row['client_name']);
                                 ?>
-                                <option <?php if ($recurring_expense_client_id == $client_id_select) { echo "selected"; } ?> value="<?php echo $client_id_select; ?>"><?php echo $client_name_select; ?></option>
+                                <option <?php if ($client_id == $client_id_select) { echo "selected"; } ?> value="<?= $client_id_select ?>"><?= $client_name_select ?></option>
 
                                 <?php
                             }
@@ -258,8 +245,8 @@ ob_start();
 
     </div>
     <div class="modal-footer">
-        <button type="submit" name="edit_recurring_expense" class="btn btn-primary text-bold"><i class="fas fa-check mr-2"></i>Save</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fas fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="edit_recurring_expense" class="btn btn-primary text-bold"><i class="fas fa-check me-2"></i>Save</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fas fa-times me-2"></i>Cancel</button>
     </div>
 </form>
 

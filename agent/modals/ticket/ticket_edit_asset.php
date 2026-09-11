@@ -2,16 +2,22 @@
 
 require_once '../../../includes/modal_header.php';
 
+enforceUserPermission('module_support', 2);
+
 $ticket_id = intval($_GET['id']);
 
-$sql = mysqli_query($mysqli, "SELECT * FROM tickets LEFT JOIN clients ON client_id = ticket_client_id WHERE ticket_id = $ticket_id LIMIT 1");
+$sql = mysqli_query($mysqli, "SELECT client_name, ticket_asset_id, ticket_client_id, ticket_number, ticket_prefix FROM tickets LEFT JOIN clients ON client_id = ticket_client_id WHERE ticket_id = $ticket_id LIMIT 1");
 
 $row = mysqli_fetch_assoc($sql);
-$client_id = intval($row['ticket_client_id']);
-$client_name = nullable_htmlentities($row['client_name']);
-$ticket_prefix = nullable_htmlentities($row['ticket_prefix']);
+$client_name = escapeHtml($row['client_name']);
+$ticket_prefix = escapeHtml($row['ticket_prefix']);
 $ticket_number = intval($row['ticket_number']);
 $asset_id = intval($row['ticket_asset_id']);
+$client_id = intval($row['ticket_client_id']);
+
+if ($client_id) {
+    enforceClientAccess();
+}
 
 // Additional Assets Selected
 $additional_assets_array = array();
@@ -21,38 +27,34 @@ while ($row = mysqli_fetch_assoc($sql_additional_assets)) {
     $additional_assets_array[] = $additional_asset_id;
 }
 
-// Generate the HTML form content using output buffering.
 ob_start();
+
 ?>
 
 <div class="modal-header bg-dark">
-    <h5 class="modal-title"><i class="fa fa-fw fa-desktop mr-2"></i>Editing ticket Asset: <strong><?php echo "$ticket_prefix$ticket_number"; ?></strong> - <?php echo $client_name; ?></h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <h5 class="modal-title"><i class="fa fa-fw fa-desktop me-2"></i>Editing ticket Asset: <strong><?= "$ticket_prefix$ticket_number" ?></strong> - <?= $client_name ?></h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 <form action="post.php" method="post" autocomplete="off">
     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-    <input type="hidden" name="ticket_id" value="<?php echo $ticket_id; ?>">
+    <input type="hidden" name="ticket_id" value="<?= $ticket_id ?>">
     <div class="modal-body">
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Asset</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-desktop"></i></span>
-                </div>
-                <select class="form-control select2" name="asset">
+                <select class="form-select select2" name="asset">
                     <option value="0">- None -</option>
                     <?php
 
                     $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, contact_name FROM assets LEFT JOIN contacts ON contact_id = asset_contact_id WHERE asset_client_id = $client_id AND asset_archived_at IS NULL ORDER BY asset_name ASC");
                     while ($row = mysqli_fetch_assoc($sql_assets)) {
                         $asset_id_select = intval($row['asset_id']);
-                        $asset_name_select = nullable_htmlentities($row['asset_name']);
-                        $asset_contact_name_select = nullable_htmlentities($row['contact_name']);
+                        $asset_name_select = escapeHtml($row['asset_name']);
+                        $asset_contact_name_select = escapeHtml($row['contact_name']);
                         ?>
-                        <option <?php if ($asset_id == $asset_id_select) { echo "selected"; } ?> value="<?php echo $asset_id_select; ?>"><?php echo "$asset_name_select - $asset_contact_name_select"; ?></option>
+                        <option <?php if ($asset_id == $asset_id_select) { echo "selected"; } ?> value="<?= $asset_id_select ?>"><?= "$asset_name_select - $asset_contact_name_select" ?></option>
 
                         <?php
                     }
@@ -61,25 +63,23 @@ ob_start();
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Additional Assets</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-desktop"></i></span>
-                </div>
-                <select class="form-control select2" name="additional_assets[]" data-tags="true" data-placeholder="- Select Additional Assets -" multiple>
+                <select class="form-select select2" name="additional_assets[]" data-tags="true" data-placeholder="- Select Additional Assets -" multiple>
                     <option value=""></option>
                     <?php
 
                     $sql_assets = mysqli_query($mysqli, "SELECT asset_id, asset_name, contact_name FROM assets LEFT JOIN contacts ON contact_id = asset_contact_id WHERE asset_client_id = $client_id AND asset_id != $asset_id AND asset_archived_at IS NULL ORDER BY asset_name ASC");
                     while ($row = mysqli_fetch_assoc($sql_assets)) {
                         $asset_id_select = intval($row['asset_id']);
-                        $asset_name_select = nullable_htmlentities($row['asset_name']);
-                        $asset_contact_name_select = nullable_htmlentities($row['contact_name']);
+                        $asset_name_select = escapeHtml($row['asset_name']);
+                        $asset_contact_name_select = escapeHtml($row['contact_name']);
                     ?>
-                        <option value="<?php echo $asset_id_select; ?>"
+                        <option value="<?= $asset_id_select ?>"
                             <?php if (in_array($asset_id_select, $additional_assets_array)) { echo "selected"; } ?>
-                            ><?php echo "$asset_name_select - $asset_contact_name_select"; ?></option>
+                            ><?= "$asset_name_select - $asset_contact_name_select" ?></option>
 
                     <?php } ?>
                 </select>
@@ -89,8 +89,8 @@ ob_start();
     </div>
 
     <div class="modal-footer">
-        <button type="submit" name="edit_ticket_asset" class="btn btn-primary text-bold"><i class="fa fa-check mr-2"></i>Save</button>
-        <button type="button" class="btn btn-light" data-dismiss="modal"><i class="fa fa-times mr-2"></i>Cancel</button>
+        <button type="submit" name="edit_ticket_asset" class="btn btn-primary text-bold"><i class="fa fa-check me-2"></i>Save</button>
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal"><i class="fa fa-times me-2"></i>Cancel</button>
     </div>
 
 </form>

@@ -33,11 +33,13 @@ if (!$client_url) {
 // Overview SQL query
 $sql = mysqli_query(
     $mysqli,
-    "SELECT SQL_CALC_FOUND_ROWS * FROM services
+    "SELECT SQL_CALC_FOUND_ROWS client_id, client_name, service_backup, service_category, service_created_at,
+        service_description, service_id, service_importance, service_name, service_notes,
+        service_review_due, service_updated_at FROM services
     LEFT JOIN clients ON client_id = service_client_id
     WHERE (service_name LIKE '%$q%' OR service_description LIKE '%$q%' OR service_category LIKE '%$q%' OR client_name LIKE '%$q%')
     AND client_archived_at IS NULL
-    $access_permission_query
+    " . clientScopeSql('service_client_id') . "
     $client_query
     ORDER BY $sort $order LIMIT $record_from, $record_to"
 );
@@ -45,29 +47,27 @@ $sql = mysqli_query(
 $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
 
 ?>
-    <div class="card card-dark">
-        <div class="card-header py-2">
-            <h3 class="card-title mt-2"><i class="fa fa-fw fa-stream mr-2"></i>Services</h3>
+    <div class="card">
+        <div class="card-header bg-dark py-2">
+            <h3 class="card-title mt-2"><i class="fa fa-fw fa-stream me-2"></i>Services</h3>
             <div class="card-tools">
                 <?php if (lookupUserPermission("module_support") >= 2) { ?>
-                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/service/service_add.php?<?= $client_url ?>"><i class="fas fa-plus mr-2"></i>New Service</button>
+                    <button type="button" class="btn btn-primary ajax-modal" data-modal-url="modals/service/service_add.php?<?= $client_url ?>"><i class="fas fa-plus me-2"></i>New Service</button>
                 <?php } ?>
             </div>
         </div>
 
-        <div class="card-body">
+        <div class="card-header py-3">
 
             <form autocomplete="off">
                 <?php if ($client_url) { ?>
-                <input type="hidden" name="client_id" value="<?php echo $client_id; ?>">
+                <input type="hidden" name="client_id" value="<?= $client_id ?>">
                 <?php } ?>
-                <div class="row">
+                <div class="row g-2 align-items-center">
                     <div class="col-md-4">
-                        <div class="input-group mb-3 mb-md-0">
-                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(nullable_htmlentities($q)); } ?>" placeholder="Search Services">
-                            <div class="input-group-append">
+                        <div class="input-group">
+                            <input type="search" class="form-control" name="q" value="<?php if (isset($q)) { echo stripslashes(escapeHtml($q)); } ?>" placeholder="Search Services">
                                 <button class="btn btn-dark"><i class="fa fa-search"></i></button>
-                            </div>
                         </div>
                     </div>
 
@@ -76,7 +76,7 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     <?php } else { ?>
                     <div class="col-md-2">
                         <div class="input-group">
-                            <select class="form-control select2" name="client" onchange="this.form.submit()">
+                            <select class="form-select select2" name="client" onchange="this.form.submit()">
                                 <option value="" <?php if ($client == "") { echo "selected"; } ?>>- All Clients -</option>
 
                                 <?php
@@ -85,14 +85,14 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                                     FROM clients
                                     JOIN services ON service_client_id = client_id
                                     WHERE client_archived_at IS NULL
-                                    $access_permission_query
+                                    " . clientScopeSql('clients.client_id') . "
                                     ORDER BY client_name ASC
                                 ");
                                 while ($row = mysqli_fetch_assoc($sql_clients_filter)) {
                                     $client_id = intval($row['client_id']);
-                                    $client_name = nullable_htmlentities($row['client_name']);
+                                    $client_name = escapeHtml($row['client_name']);
                                 ?>
-                                    <option <?php if ($client == $client_id) { echo "selected"; } ?> value="<?php echo $client_id; ?>"><?php echo $client_name; ?></option>
+                                    <option <?php if ($client == $client_id) { echo "selected"; } ?> value="<?= $client_id ?>"><?= $client_name ?></option>
                                 <?php
                                 }
                                 ?>
@@ -103,120 +103,119 @@ $num_rows = mysqli_fetch_row(mysqli_query($mysqli, "SELECT FOUND_ROWS()"));
                     <?php } ?>
 
                     <div class="col-md-6">
-                        <div class="float-right">
+                        <div class="float-end">
                         </div>
                     </div>
                 </div>
             </form>
-            <hr>
+        </div>
 
-            <div class="table-responsive">
-                <table class="table table-striped table-borderless table-hover">
-                    <thead class="<?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
-                    <tr>
-                        <th>
-                            <a class="text-dark" href="?<?php echo $url_query_strings_sort; ?>&sort=service_name&order=<?php echo $disp; ?>">
-                                Name <?php if ($sort == 'service_name') { echo $order_icon; } ?>
-                            </a>
-                        </th>
-                        <th>
-                            <a class="text-dark" href="?<?php echo $url_query_strings_sort; ?>&sort=service_category&order=<?php echo $disp; ?>">
-                                Category <?php if ($sort == 'service_category') { echo $order_icon; } ?>
-                            </a>
-                        </th>
-                        <th>
-                            <a class="text-dark" href="?<?php echo $url_query_strings_sort; ?>&sort=service_importance&order=<?php echo $disp; ?>">
-                                Importance <?php if ($sort == 'service_importance') { echo $order_icon; } ?>
-                            </a>
-                        </th>
-                        <th>
-                            <a class="text-dark" href="?<?php echo $url_query_strings_sort; ?>&sort=service_updated_at&order=<?php echo $disp; ?>">
-                                Updated <?php if ($sort == 'service_updated_at') { echo $order_icon; } ?>
-                            </a>
-                        </th>
-                        <?php if (!$client_url) { ?>
-                        <th>
-                            <a class="text-dark" href="?<?php echo $url_query_strings_sort; ?>&sort=client_name&order=<?php echo $disp; ?>">
-                                Client <?php if ($sort == 'client_name') { echo $order_icon; } ?>
-                            </a>
-                        </th>
-                        <?php } ?>
-                        <th class="text-center">Action</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php
+        <div class="table-responsive">
+            <table class="table table-striped table-borderless table-hover mb-0">
+                <thead class="<?php if ($num_rows[0] == 0) { echo "d-none"; } ?>">
+                <tr>
+                    <th class="ps-3">
+                        <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=service_name&order=<?= $disp ?>">
+                            Name <?php if ($sort == 'service_name') { echo $order_icon; } ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=service_category&order=<?= $disp ?>">
+                            Category <?php if ($sort == 'service_category') { echo $order_icon; } ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=service_importance&order=<?= $disp ?>">
+                            Importance <?php if ($sort == 'service_importance') { echo $order_icon; } ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=service_updated_at&order=<?= $disp ?>">
+                            Updated <?php if ($sort == 'service_updated_at') { echo $order_icon; } ?>
+                        </a>
+                    </th>
+                    <?php if (!$client_url) { ?>
+                    <th>
+                        <a class="text-dark" href="?<?= $url_query_strings_sort ?>&sort=client_name&order=<?= $disp ?>">
+                            Client <?php if ($sort == 'client_name') { echo $order_icon; } ?>
+                        </a>
+                    </th>
+                    <?php } ?>
+                    <th class="text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php
 
-                    while ($row = mysqli_fetch_assoc($sql)) {
-                        $client_id = intval($row['client_id']);
-                        $client_name = nullable_htmlentities($row['client_name']);
-                        $service_id = intval($row['service_id']);
-                        $service_name = nullable_htmlentities($row['service_name']);
-                        $service_description = nullable_htmlentities($row['service_description']);
-                        $service_category = nullable_htmlentities($row['service_category']);
-                        $service_importance = nullable_htmlentities($row['service_importance']);
-                        $service_backup = nullable_htmlentities($row['service_backup']);
-                        $service_notes = nullable_htmlentities($row['service_notes']);
-                        $service_created_at = nullable_htmlentities($row['service_created_at']);
-                        $service_updated_at = nullable_htmlentities($row['service_updated_at']);
-                        $service_review_due = nullable_htmlentities($row['service_review_due']);
+                while ($row = mysqli_fetch_assoc($sql)) {
+                    $client_id = intval($row['client_id']);
+                    $client_name = escapeHtml($row['client_name']);
+                    $service_id = intval($row['service_id']);
+                    $service_name = escapeHtml($row['service_name']);
+                    $service_description = escapeHtml($row['service_description']);
+                    $service_category = escapeHtml($row['service_category']);
+                    $service_importance = escapeHtml($row['service_importance']);
+                    $service_backup = escapeHtml($row['service_backup']);
+                    $service_notes = escapeHtml($row['service_notes']);
+                    $service_created_at = escapeHtml($row['service_created_at']);
+                    $service_updated_at = escapeHtml($row['service_updated_at']);
+                    $service_review_due = escapeHtml($row['service_review_due']);
 
-                        ?>
-
-                        <tr>
-                            <!-- Name/Category/Updated/Importance from DB -->
-                            <td>
-                                <a class="text-dark ajax-modal" href="#"
-                                    data-modal-size="xl"
-                                    data-modal-url="modals/service/service_details.php?id=<?= $service_id ?>">
-                                    <div class="media">
-                                        <i class="fa fa-fw fa-2x fa-stream mr-3"></i>
-                                        <div class="media-body">
-                                            <div><?php echo $service_name; ?></div>
-                                            <div><small class="text-secondary"><?php echo $service_description; ?></small></div>
-                                        </div>
-                                    </div>
-                                </a>
-
-                            </td>
-                            <td><?php echo $service_category ?></td>
-                            <td><?php echo $service_importance ?></td>
-                            <td><?php echo $service_updated_at ?></td>
-                            <?php if (!$client_url) { ?>
-                            <td><a href="services.php?client_id=<?php echo $client_id; ?>"><?php echo $client_name; ?></a></td>
-                            <?php } ?>
-
-                            <!-- Action -->
-                            <td>
-                                <div class="dropdown dropleft text-center">
-                                    <button class="btn btn-secondary btn-sm" type="button" data-toggle="dropdown">
-                                        <i class="fas fa-ellipsis-h"></i>
-                                    </button>
-                                    <div class="dropdown-menu">
-                                        <a class="dropdown-item ajax-modal" href="#"
-                                            data-modal-url="modals/service/service_edit.php?id=<?= $service_id ?>">
-                                            <i class="fas fa-fw fa-edit mr-2"></i>Edit
-                                        </a>
-                                        <?php if (lookupUserPermission("module_support") >= 3) { ?>
-                                            <div class="dropdown-divider"></div>
-                                            <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_service=<?php echo $service_id; ?>&csrf_token=<?php echo $_SESSION['csrf_token']; ?>">
-                                                <i class="fas fa-fw fa-trash mr-2"></i>Delete
-                                            </a>
-                                        <?php } ?>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php
-                    }
                     ?>
 
-                    </tbody>
-                </table>
-            </div>
-            <?php require_once "../includes/filter_footer.php";
- ?>
+                    <tr>
+                        <!-- Name/Category/Updated/Importance from DB -->
+                        <td class="ps-3">
+                            <a class="text-dark ajax-modal" href="#"
+                                data-modal-size="xl"
+                                data-modal-url="modals/service/service.php?id=<?= $service_id ?>">
+                                <div class="d-flex">
+                                    <i class="fa fa-fw fa-2x fa-stream me-3"></i>
+                                    <div class="flex-grow-1">
+                                        <div><?= $service_name ?></div>
+                                        <div><small class="text-secondary"><?= $service_description ?></small></div>
+                                    </div>
+                                </div>
+                            </a>
+
+                        </td>
+                        <td><?= $service_category ?></td>
+                        <td><?= $service_importance ?></td>
+                        <td><?= $service_updated_at ?></td>
+                        <?php if (!$client_url) { ?>
+                        <td><a href="services.php?client_id=<?= $client_id ?>"><?= $client_name ?></a></td>
+                        <?php } ?>
+
+                        <!-- Action -->
+                        <td>
+                            <div class="dropdown dropstart text-center">
+                                <button class="btn btn-secondary btn-sm" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-h"></i>
+                                </button>
+                                <div class="dropdown-menu">
+                                    <a class="dropdown-item ajax-modal" href="#"
+                                        data-modal-url="modals/service/service_edit.php?id=<?= $service_id ?>">
+                                        <i class="fas fa-fw fa-edit me-2"></i>Edit
+                                    </a>
+                                    <?php if (lookupUserPermission("module_support") >= 3) { ?>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item text-danger text-bold confirm-link" href="post.php?delete_service=<?= $service_id ?>&csrf_token=<?= $_SESSION['csrf_token'] ?>">
+                                            <i class="fas fa-fw fa-trash me-2"></i>Delete
+                                        </a>
+                                    <?php } ?>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php
+                }
+                ?>
+
+                </tbody>
+            </table>
         </div>
+        <?php require_once "../includes/filter_footer.php";
+ ?>
     </div>
 
 <?php

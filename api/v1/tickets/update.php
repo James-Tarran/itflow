@@ -25,8 +25,8 @@ if (!empty($ticket_id)) {
 
     // Not filtered by client_id in SQL: require_post_method.php only overrides
     // $client_id from a posted client_id, it doesn't wildcard it to "any" for an
-    // ALL CLIENTS key (unlike require_get_method.php) - so `LIKE '$client_id'`
-    // with client_id 0 would match nothing. Scope is checked in PHP below instead.
+    // ALL CLIENTS key (unlike require_get_method.php) - so scoping in SQL with
+    // client_id 0 would match nothing. Scope is checked in PHP below instead.
     $ticket_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT * FROM tickets WHERE ticket_id = $ticket_id LIMIT 1"));
 
     if ($ticket_row && ($client_id == 0 || intval($ticket_row['ticket_client_id']) == $client_id)) {
@@ -49,7 +49,7 @@ if (!empty($ticket_id)) {
         if ($update_sql) {
             $update_count = mysqli_affected_rows($mysqli);
 
-            $ticket_prefix = sanitizeInput($ticket_row['ticket_prefix']);
+            $ticket_prefix = escapeSql($ticket_row['ticket_prefix']);
             $ticket_number = intval($ticket_row['ticket_number']);
             $ticket_client_id = intval($ticket_row['ticket_client_id']);
 
@@ -58,7 +58,7 @@ if (!empty($ticket_id)) {
                 $agent_name = 'Unassigned';
                 if ($assigned_to != 0) {
                     $tech_row = mysqli_fetch_assoc(mysqli_query($mysqli, "SELECT user_name FROM users WHERE user_id = $assigned_to LIMIT 1"));
-                    $agent_name = $tech_row ? sanitizeInput($tech_row['user_name']) : 'Unassigned';
+                    $agent_name = $tech_row ? escapeSql($tech_row['user_name']) : 'Unassigned';
                 }
 
                 mysqli_query($mysqli, "INSERT INTO ticket_replies SET ticket_reply = 'Ticket assigned to $agent_name via API ($api_key_name).', ticket_reply_type = 'Internal', ticket_reply_time_worked = '00:00:00', ticket_reply_by = 0, ticket_reply_ticket_id = $ticket_id");
@@ -68,8 +68,9 @@ if (!empty($ticket_id)) {
                 }
             }
 
-            logAction("Ticket", "Edit", "$ticket_prefix$ticket_number edited via API ($api_key_name)", $ticket_client_id, $ticket_id);
-            logAction("API", "Success", "Edited ticket $ticket_prefix$ticket_number via API ($api_key_name)", $ticket_client_id);
+            logTicketHistory($ticket_id, "Edited via the API ($api_key_name)");
+            logAudit("Ticket", "Edit", "$ticket_prefix$ticket_number edited via API ($api_key_name)", $ticket_client_id, $ticket_id);
+            logAudit("API", "Success", "Edited ticket $ticket_prefix$ticket_number via API ($api_key_name)", $ticket_client_id, $ticket_id);
         }
     }
 }

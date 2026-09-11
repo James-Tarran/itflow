@@ -13,18 +13,18 @@ $count_files = count($file_ids);
 $count_docs  = count($document_ids);
 $total       = $count_files + $count_docs;
 
+enforceClientAccess();
+
 ob_start();
 
 ?>
 
 <div class="modal-header bg-dark">
     <h5 class="modal-title">
-        <i class="fa fa-fw fa-exchange-alt mr-2"></i>
+        <i class="fa fa-fw fa-exchange-alt me-2"></i>
         Move <strong><?= $total ?></strong> Item<?= $total === 1 ? '' : 's' ?>
     </h5>
-    <button type="button" class="close text-white" data-dismiss="modal">
-        <span>&times;</span>
-    </button>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 </div>
 
 <form action="post.php" method="post" autocomplete="off">
@@ -45,13 +45,11 @@ ob_start();
             Documents: <strong><?= $count_docs ?></strong>
         </p>
 
-        <div class="form-group">
+        <div class="mb-3">
             <label>Target Folder</label>
             <div class="input-group">
-                <div class="input-group-prepend">
                     <span class="input-group-text"><i class="fa fa-fw fa-folder"></i></span>
-                </div>
-                <select class="form-control select2" name="bulk_folder_id">
+                <select class="form-select select2" name="bulk_folder_id">
                     <option value="0">/</option>
                     <?php
                     // NOTE: folder_location is gone now, so just use folder_client_id
@@ -68,7 +66,7 @@ ob_start();
                     while ($row = mysqli_fetch_assoc($sql_all_folders)) {
                         $folders[$row['folder_id']] = [
                             'folder_id'    => (int)$row['folder_id'],
-                            'folder_name'  => nullable_htmlentities($row['folder_name']),
+                            'folder_name'  => escapeHtml($row['folder_name']),
                             'parent_folder'=> (int)$row['parent_folder'],
                             'children'     => []
                         ];
@@ -123,10 +121,10 @@ ob_start();
 
     <div class="modal-footer">
         <button type="submit" name="bulk_move_files" class="btn btn-primary text-bold">
-            <i class="fa fa-check mr-2"></i>Move Files
+            <i class="fa fa-check me-2"></i>Move Files
         </button>
-        <button type="button" class="btn btn-light" data-dismiss="modal">
-            <i class="fa fa-times mr-2"></i>Cancel
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+            <i class="fa fa-times me-2"></i>Cancel
         </button>
     </div>
 </form>

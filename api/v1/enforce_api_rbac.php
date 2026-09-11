@@ -177,7 +177,7 @@ if (lookupUserPermission($resource_module[$resource]) < $required_level) {
 // permission at all, just an optional filter applied inside apiClientScopeSql().
 $client_id = intval($_POST['client_id'] ?? $_GET['client_id'] ?? 0);
 $client_id_supplied = isset($_POST['client_id']) || isset($_GET['client_id']);
-$is_write = in_array($operation_file, ['create.php', 'update.php', 'delete.php'], true);
+$is_write = in_array($operation_file, ['create.php', 'update.php', 'delete.php', 'set_contacts.php'], true);
 if ($is_write && !apiUserCanAccessClient($client_id)) {
     // Writes act on a single client the caller names (client_id 0 = a global record).
     // The user must be able to access it - this also blocks a restricted user from

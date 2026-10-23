@@ -18,6 +18,14 @@ if (isset($_POST['vendor_description'])) {
     $description = '';
 }
 
+if (isset($_POST['vendor_account_number'])) {
+    $account_number = escapeSql($_POST['vendor_account_number']);
+} elseif ($vendor_row) {
+    $account_number = mysqli_real_escape_string($mysqli, $vendor_row['vendor_account_number']);
+} else {
+    $account_number = '';
+}
+
 if (isset($_POST['vendor_contact_name'])) {
     $contact_name = escapeSql($_POST['vendor_contact_name']);
 } elseif ($vendor_row) {
@@ -26,8 +34,16 @@ if (isset($_POST['vendor_contact_name'])) {
     $contact_name = '';
 }
 
+if (isset($_POST['vendor_phone_country_code'])) {
+    $phone_country_code = preg_replace("/[^0-9]/", '', $_POST['vendor_phone_country_code']);
+} elseif ($vendor_row) {
+    $phone_country_code = mysqli_real_escape_string($mysqli, $vendor_row['vendor_phone_country_code']);
+} else {
+    $phone_country_code = '';
+}
+
 if (isset($_POST['vendor_phone'])) {
-    $phone = escapeSql($_POST['vendor_phone']);
+    $phone = preg_replace("/[^0-9]/", '', $_POST['vendor_phone']);
 } elseif ($vendor_row) {
     $phone = mysqli_real_escape_string($mysqli, $vendor_row['vendor_phone']);
 } else {
@@ -35,7 +51,7 @@ if (isset($_POST['vendor_phone'])) {
 }
 
 if (isset($_POST['vendor_extension'])) {
-    $extension = escapeSql($_POST['vendor_extension']);
+    $extension = preg_replace("/[^0-9]/", '', $_POST['vendor_extension']);
 } elseif ($vendor_row) {
     $extension = mysqli_real_escape_string($mysqli, $vendor_row['vendor_extension']);
 } else {
@@ -80,14 +96,6 @@ if (isset($_POST['vendor_code'])) {
     $code = mysqli_real_escape_string($mysqli, $vendor_row['vendor_code']);
 } else {
     $code = '';
-}
-
-if (isset($_POST['vendor_account_number'])) {
-    $account_number = escapeSql($_POST['vendor_account_number']);
-} elseif ($vendor_row) {
-    $account_number = mysqli_real_escape_string($mysqli, $vendor_row['vendor_account_number']);
-} else {
-    $account_number = '';
 }
 
 if (isset($_POST['vendor_notes'])) {

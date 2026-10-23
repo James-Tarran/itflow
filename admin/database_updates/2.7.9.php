@@ -80,3 +80,22 @@ defined('FROM_DB_UPDATER') || die("Direct file access is not allowed");
     }
 
     unset($itflow_fee_columns_exist, $itflow_permission_type_exists);
+
+    // Add auto-send option to recurring invoices (default to enabled) or whether they should be generated as drafts for manual review & sending
+    //
+    // Upstream also numbers this migration 2.7.9, so it lives alongside the fork's
+    // OAuth changes above. Added conditionally so it is safe to re-run.
+
+    $itflow_auto_send_exists = mysqli_query($mysqli, "SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'recurring_invoices'
+        AND COLUMN_NAME = 'recurring_invoice_auto_send'
+        LIMIT 1");
+
+    if (!$itflow_auto_send_exists || mysqli_num_rows($itflow_auto_send_exists) === 0) {
+        mysqli_query($mysqli, "ALTER TABLE `recurring_invoices`
+            ADD COLUMN `recurring_invoice_auto_send` tinyint(1) NOT NULL DEFAULT 1 AFTER `recurring_invoice_note`
+        ");
+    }
+
+    unset($itflow_auto_send_exists);
